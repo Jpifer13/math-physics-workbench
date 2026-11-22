@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { symbolToLatex } from '../core/expr';
+import { checkUnits } from '../core/dimcheck';
 import { MEASURES } from '../core/measure';
 import type { Expectation, OdeModel, SolverMethod } from '../core/ode';
 import { confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
@@ -53,6 +54,12 @@ export function Definition() {
   const dirty = useSim((s) => s.dirty);
   const [configure, setConfigure] = useState(false);
   const eqs = useMemo(() => equationsTex(model), [model]);
+  const units = useMemo(() => checkUnits(model), [model]);
+  /** Unit problems attached to one part of the model. */
+  const unitNotes = (...where: string[]) => {
+    const found = units.issues.filter((i) => where.includes(i.where));
+    return found.length ? <div className="unit-issue" role="note">{found.map((i, k) => <div key={k}>{i.message}.</div>)}</div> : null;
+  };
   const method = model.method ?? 'rk4';
 
   const setState = (i: number, p: Partial<OdeModel['states'][number]>) =>
@@ -94,6 +101,13 @@ export function Definition() {
       <div className="sim-side-scroll">
         <Section title="System" count={model.states.length}>
           <div className="equations">{eqs.map((e, i) => <Tex key={i} block tex={e} />)}</div>
+          <div className={`unit-summary${units.issues.length ? ' bad' : units.empty ? '' : ' ok'}`}>
+            {units.empty
+              ? 'Units: none given. Add units to parameters and variables and every equation is checked for dimensional consistency.'
+              : units.issues.length
+                ? `Units: ${units.issues.length} problem${units.issues.length > 1 ? 's' : ''} found — see the notes beside the equations.`
+                : `Units: consistent (${units.checked} equation${units.checked === 1 ? '' : 's'} checked${units.checked ? '' : '; label more quantities to check more'}).`}
+          </div>
           {model.states.map((s, i) => (
             <div className="ed-block" key={i}>
               <div className="ed-row">
@@ -107,6 +121,7 @@ export function Definition() {
                 <span className="muted rate">d{s.name}/dt =</span>
                 <input className="code" value={s.deriv} onChange={(e) => setState(i, { deriv: e.target.value })} aria-label={`Rate of change of ${s.name}`} spellCheck={false} />
               </div>
+              {unitNotes(`state:${s.name}`, `init:${s.name}`, `rate:${s.name}`)}
             </div>
           ))}
           <button className="btn small" onClick={() => patch({ states: [...model.states, { name: `s${model.states.length + 1}`, init: '0', deriv: '0' }] })}>+ State variable</button>
@@ -147,6 +162,7 @@ export function Definition() {
                   />
                 </>
               )}
+              {unitNotes(`param:${p.name}`)}
             </div>
           ))}
           <button className="btn small" onClick={() => { patch({ params: [...model.params, { name: `p${model.params.length + 1}`, value: 1, min: 0, max: 10 }] }); setConfigure(true); }}>+ Parameter</button>
@@ -154,12 +170,15 @@ export function Definition() {
 
         <Section title="Observables" count={model.derived.length}>
           {model.derived.map((d, i) => (
-            <div className="ed-row" key={i}>
+            <div key={i}>
+            <div className="ed-row">
               <input className="code name" value={d.name} onChange={(e) => setDerived(i, { name: e.target.value })} aria-label="Observable name" spellCheck={false} />
               <span className="muted">=</span>
               <input className="code" value={d.expr} onChange={(e) => setDerived(i, { expr: e.target.value })} aria-label={`Expression for ${d.name}`} spellCheck={false} />
-              <input className="code unit" value={d.unit ?? ''} placeholder="unit" onChange={(e) => setDerived(i, { unit: e.target.value || undefined })} aria-label={`Unit of ${d.name}`} />
+              <input className="code unit" value={d.unit ?? ''} placeholder={units.inferred[d.name] || 'unit'} title={units.inferred[d.name] ? `Worked out from the expression: ${units.inferred[d.name]}` : undefined} onChange={(e) => setDerived(i, { unit: e.target.value || undefined })} aria-label={`Unit of ${d.name}`} />
               <button className="btn icon" title="Remove observable" onClick={() => patch({ derived: model.derived.filter((_, j) => j !== i) })}>×</button>
+            </div>
+            {unitNotes(`observable:${d.name}`)}
             </div>
           ))}
           <button className="btn small" onClick={() => patch({ derived: [...model.derived, { name: `q${model.derived.length + 1}`, expr: '0' }] })}>+ Observable</button>
@@ -180,6 +199,7 @@ export function Definition() {
                   <span className="muted rate">then set</span>
                   <input className="code" value={ev.then} placeholder="vy = -e * vy" onChange={(e) => setEvent({ then: e.target.value })} aria-label={`Resets of event ${i + 1}`} spellCheck={false} />
                 </div>
+                {unitNotes(`event:${i + 1}`)}
               </div>
             );
           })}
@@ -248,6 +268,7 @@ export function Definition() {
             <span className="muted">stop when</span>
             <input className="code" value={model.stopWhen ?? ''} placeholder="optional, e.g. y < 0" onChange={(e) => patch({ stopWhen: e.target.value || undefined })} aria-label="Stop condition" spellCheck={false} />
           </div>
+          {unitNotes('stop')}
         </Section>
 
         <Section title="Notes" defaultOpen={!!(model.summary || model.notes)}>

@@ -487,3 +487,9 @@ ul.howto { padding-left: 18px; }
 .pin { border: 0; background: none; cursor: pointer; padding: 3px 6px; border-radius: 3px; font: inherit; font-variant-numeric: tabular-nums; color: inherit; }
 .pin:hover { background: var(--accent-soft); color: var(--accent); }
 @media (max-width: 1250px) { .accuracy-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.unit-summary { font-size: 11.5px; line-height: 1.4; color: var(--text-muted); margin: -2px 0 8px; }
+.unit-summary.ok { color: var(--tone-output); }
+.unit-summary.bad { color: #8a5a00; font-weight: 600; }
+.unit-issue { background: #fff8e6; border: 1px solid #f0d58c; border-radius: 4px; padding: 5px 8px; margin: 0 0 6px; color: #6b4e00; font-size: 11.5px; line-height: 1.4; }
+.ed-block .unit-issue { margin: 0 0 6px; }

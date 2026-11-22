@@ -267,8 +267,45 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     load(t, y);
     return Boolean(stop(vals));
   };
-  const blewUp = (t: number): SimResult =>
-    finish({ t: tOut, series, error: `The solution diverged at t ≈ ${t.toPrecision(3)} — try a smaller step or tolerance` });
+  /**
+   * Which variable is responsible when a run fails: evaluate the rates at the last
+   * good state and name the one that is undefined, or changing fastest for its size.
+   */
+  const culprit = (t: number, h: number): string => {
+    // The last state that was still finite: the current one, else the one before the failed step.
+    const state = y.every(Number.isFinite) ? y.slice() : yPrev.slice();
+    if (!state.every(Number.isFinite)) return '';
+    const rates = new Array<number>(n);
+    const undefinedRate = (at: number[]): number => {
+      load(t, at);
+      for (let i = 0; i < n; i++) rates[i] = derivs[i](vals);
+      return rates.findIndex((r) => !Number.isFinite(r));
+    };
+    try {
+      let broken = undefinedRate(state);
+      if (broken < 0) {
+        // Defined here; look one step ahead, where the failed step was heading.
+        const ahead = state.map((v, i) => v + h * rates[i]);
+        const here = rates.slice();
+        broken = undefinedRate(ahead);
+        for (let i = 0; i < n; i++) rates[i] = here[i];
+      }
+      if (broken >= 0) return ` The rate of change of ${names[broken]} becomes undefined there (a division by zero, or a root or logarithm of a negative number).`;
+    } catch {
+      return '';
+    }
+    let worst = 0, k = -1;
+    for (let i = 0; i < n; i++) {
+      const rel = Math.abs(rates[i]) / (Math.abs(state[i]) + 1e-12);
+      if (rel > worst) { worst = rel; k = i; }
+    }
+    // Only worth naming if it changes by many times its own size over the run.
+    return k >= 0 && worst * model.tEnd > 1e3
+      ? ` ${names[k]} is changing fastest there: about ${worst.toPrecision(2)} times its own size per unit time.`
+      : '';
+  };
+  const blewUp = (t: number, h = model.tEnd / 400): SimResult =>
+    finish({ t: tOut, series, error: `The solution diverged at t ≈ ${t.toPrecision(3)} — try a smaller step or tolerance.${culprit(t, h)}` });
 
   const tmp = new Array<number>(n);
   const yPrev = new Array<number>(n);
@@ -398,7 +435,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
           const scale = atol + rtol * Math.max(Math.abs(y[i]), Math.abs(yNew[i]));
           err = Math.max(err, Math.abs(h * (s5 - s4)) / scale);
         }
-        if (!Number.isFinite(err)) return blewUp(t);
+        if (!Number.isFinite(err)) return blewUp(t, h);
         if (err <= 1) {
           for (let i = 0; i < n; i++) { yPrev[i] = y[i]; y[i] = yNew[i]; }
           stats.steps++;
@@ -417,7 +454,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
           record(t);
         } else stats.rejected++;
         h = Math.min(hMax, h * Math.min(5, Math.max(0.2, 0.9 * Math.pow(Math.max(err, 1e-10), -0.2))));
-        if (h < model.tEnd * 1e-14) return finish({ t: tOut, series, error: `Step size collapsed at t ≈ ${t.toPrecision(3)} — the equations may be singular there` });
+        if (h < model.tEnd * 1e-14) return finish({ t: tOut, series, error: `Step size collapsed at t ≈ ${t.toPrecision(3)} — the equations may be singular there.${culprit(t, h)}` });
       }
     } else if (method === 'ros23') {
       // Linearly implicit Rosenbrock 2(3) pair (Shampine & Reichelt's ode23s) for stiff systems.
@@ -482,7 +519,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
           if (stats.steps + stats.rejected > MAX_STEPS) {
             return finish({ t: tOut, series, error: 'Too many steps — loosen the tolerance or shorten the run' });
           }
-          if (h < model.tEnd * 1e-14) return finish({ t: tOut, series, error: `Step size collapsed at t ≈ ${t.toPrecision(3)} — the equations may be singular there` });
+          if (h < model.tEnd * 1e-14) return finish({ t: tOut, series, error: `Step size collapsed at t ≈ ${t.toPrecision(3)} — the equations may be singular there.${culprit(t, h)}` });
           for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) W[i][j] = (i === j ? 1 : 0) - h * d * J[i][j];
           if (!factor()) { h /= 2; stats.rejected++; continue; }
           for (let i = 0; i < n; i++) rhs[i] = F0[i] + h * d * dT[i];
@@ -551,7 +588,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
           for (let i = 0; i < n; i++) y[i] += (h / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
         }
         stats.steps++;
-        if (y.some((v) => !Number.isFinite(v))) return blewUp(t + h);
+        if (y.some((v) => !Number.isFinite(v))) return blewUp(t, h);
         const tEvent = hasEvents ? handleEvents(t, h) : t + h;
         if (tEvent < t + h) {
           base = tEvent;

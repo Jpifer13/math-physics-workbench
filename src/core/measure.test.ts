@@ -167,3 +167,18 @@ describe('discrete events', () => {
     expect(Math.min(...zeno.series.y)).toBeGreaterThan(-1e-6);
   });
 });
+
+describe('failure diagnostics', () => {
+  const base: OdeModel = { id: 'd', name: 'd', summary: '', params: [], derived: [], tEnd: 5, dt: 0.01, method: 'rk45', tol: 1e-8, timeSeries: ['x'], phase: ['x', 'y'], states: [] };
+  it('names the variable racing away in a finite-time blow-up', () => {
+    // x' = x² reaches infinity at t = 1; y is well behaved.
+    const r = simulate({ ...base, states: [{ name: 'y', init: '1', deriv: '-y' }, { name: 'x', init: '1', deriv: 'x^2' }] });
+    expect(r.error).toMatch(/t ≈ (1\.00|0\.99)/);
+    expect(r.error).toMatch(/x is changing fastest there/);
+  });
+  it('names the rate that becomes undefined', () => {
+    // sqrt of a quantity that goes negative.
+    const r = simulate({ ...base, method: 'rk4', states: [{ name: 'u', init: '1', deriv: '-1' }, { name: 'w', init: '0', deriv: 'sqrt(u)' }], tEnd: 3 });
+    expect(r.error).toMatch(/rate of change of w becomes undefined/);
+  });
+});

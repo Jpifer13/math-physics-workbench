@@ -150,6 +150,18 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
     setReference({ run, label: model.params.map((p) => `${p.name} = ${fmtNum(p.value, 4)}`).join(', ') });
 
   const s = run.stats;
+  // Step size over time for the adaptive methods: where the solver had to work hardest.
+  const stepSeries = useMemo(() => {
+    const x: number[] = [], y: number[] = [];
+    for (let i = 1; i < run.t.length; i++) {
+      const h = run.t[i] - run.t[i - 1];
+      if (h > 0) { x.push(run.t[i]); y.push(h); }
+    }
+    return [{ name: 'step size', x, y }];
+  }, [run]);
+  const adaptive = s?.method === 'rk45' || s?.method === 'ros23';
+  // An explicit method forced into far more steps than the output needs is the usual sign of stiffness.
+  const stiffHint = s?.method === 'rk45' && !run.error && s.steps > 6000;
 
   return (
     <>
@@ -182,6 +194,12 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
         <button className="btn small" onClick={() => void exportRun()} disabled={!run.t.length} title="The data, with a header recording the model, parameters and solver that produced it">Export run (CSV)</button>
         <button className="btn small" onClick={() => void exportRecord()} disabled={!run.t.length} title="One file holding the model, the result and its provenance — everything needed to reproduce this run">Run record</button>
       </div>
+      {stiffHint && (
+        <div className="stale-note">
+          RK45 needed {s!.steps.toLocaleString()} steps for this run — many more than the solution's shape requires. If the solution looks smooth, the system is probably stiff.{' '}
+          <button className="link" onClick={() => patch({ method: 'ros23', tol: Math.max(model.tol ?? 1e-8, 1e-7) })}>Switch to the stiff solver</button>
+        </div>
+      )}
       {expectations.length > 0 && (
         <details className={`expect-strip ${failed ? 'fail' : 'pass'}`} open={failed > 0}>
           <summary>{failed ? `${failed} of ${expectations.length} expectations not met` : `All ${expectations.length} expectation${expectations.length > 1 ? 's' : ''} met`}</summary>
@@ -295,6 +313,13 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
                   </div>
                 ))}
               </div>
+              {adaptive && stepSeries[0].x.length > 2 && (
+                <details className="data-table">
+                  <summary>Step size over the run</summary>
+                  <Plot height={190} series={stepSeries} xLabel="time" yLabel="step size" logY exportName={`${model.name} step size`} />
+                  <p className="muted help">Dips show where the solver had to slow down — sharp features, near-singular points, or events. A step size that stays tiny throughout suggests a stiff system.</p>
+                </details>
+              )}
               <p className="muted help">Changes are measured between recorded samples, so anything under about 0.1 % is within the resolution of the comparison. A conserved quantity staying constant is necessary for accuracy but does not prove it — use this check as well.</p>
             </>
           )}
