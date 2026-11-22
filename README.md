@@ -230,3 +230,9 @@ What the tool is built for, and where it stops:
   from a flow arrive in SI units.
 - Installers are unsigned until certificates are supplied (see *Signing the
   installers*).
+
+## Roadmap
+
+[`docs/roadmap.md`](docs/roadmap.md) lists what to build next, derived from
+the problems researchers report with comparable tools, with the evidence for
+each and a proposed solution.
