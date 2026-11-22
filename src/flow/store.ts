@@ -1,3 +1,4 @@
+import { readStored, storageKey } from '../core/brand';
 import { addEdge, type Connection, type EdgeChangeset, type NodeChangeset } from '@xyflow/react';
 import { create } from 'zustand';
 import { layoutFlow } from '../core/docfile';
@@ -5,7 +6,7 @@ import { inputPorts, type NodeKind } from '../core/graph';
 import { EXAMPLES } from './examples';
 import { emptyModel, type Cfg, type FEdge, type FlowDoc, type FNode, type ModelCfg } from './types';
 
-const STORAGE_KEY = 'physics-tooling.flow.v1';
+const STORAGE = 'flow.v1';
 
 interface FlowState extends FlowDoc {
   selectedId: string | null;
@@ -36,7 +37,7 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 function restore(): FlowDoc {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readStored(localStorage, STORAGE);
     if (raw) {
       const doc = JSON.parse(raw) as FlowDoc;
       if (Array.isArray(doc.nodes) && Array.isArray(doc.edges)) return { ...doc, model: { ...emptyModel(), ...doc.model } };
@@ -147,7 +148,7 @@ useFlow.subscribe(() => {
     if (dirty !== useFlow.getState().dirty) useFlow.setState({ dirty });
     // Also keep a working copy so an unsaved flow survives closing the app.
     try {
-      localStorage.setItem(STORAGE_KEY, json);
+      localStorage.setItem(storageKey(STORAGE), json);
     } catch {
       /* storage unavailable — the working copy simply isn't kept */
     }

@@ -93,11 +93,11 @@ describe('provenance', () => {
   it('writes a header that survives a CSV round trip', () => {
     const run = simulate(sho);
     const lines = provenance(sho, { appVersion: '0.1.0', when: '2026-01-01T00:00:00Z', run });
-    expect(lines[0]).toBe('Physics Tooling 0.1.0 — exported 2026-01-01T00:00:00Z');
+    expect(lines[0]).toBe('Math & Physics Workbench 0.1.0 — exported 2026-01-01T00:00:00Z');
     expect(lines.join('\n')).toContain('parameters: k = 4 N/m');
     expect(lines.join('\n')).toContain('state v: initial 0; rate -k*x');
     const csv = toCsv([{ name: 't', values: run.t.slice(0, 5) }, { name: 'x', values: run.series.x.slice(0, 5) }], lines);
-    expect(csv.startsWith('# Physics Tooling 0.1.0')).toBe(true);
+    expect(csv.startsWith('# Math & Physics Workbench 0.1.0')).toBe(true);
     // The header is ignored on import, so an exported file can be read straight back.
     const back = parseTable(csv);
     expect(back.map((c) => c.name)).toEqual(['t', 'x']);

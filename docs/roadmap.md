@@ -4,7 +4,7 @@ This list comes from a survey of what physicists, mathematicians and other
 computational researchers report as pain points with similar software (MATLAB
 and Simulink, Mathematica, Modelica tools, LabVIEW, fitting packages, and
 home-grown simulation code). Each item states the problem, the evidence for it,
-where Physics Tooling stands today, and a concrete proposal.
+where Math & Physics Workbench stands today, and a concrete proposal.
 
 **On the evidence.** It is uneven. Some items rest on peer-reviewed surveys and
 systematic reviews; others on vendor blogs, forum threads and commentary. Each

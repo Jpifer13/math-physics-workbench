@@ -1,3 +1,4 @@
+import { APP_NAME, APP_SHORT_NAME } from './core/brand';
 import { useEffect } from 'react';
 import { desktop } from './desktop';
 import { CompareDialog } from './components/CompareDialog';
@@ -51,13 +52,13 @@ export function App() {
   const flowTitle = useFlow((s) => `${s.dirty ? '• ' : ''}${fileName(s.filePath) ?? (s.name || 'Untitled flow')}`);
   const title = tab === 'sim' ? simTitle : tab === 'flow' ? flowTitle : 'Math Tools';
   useEffect(() => {
-    document.title = `${title} — Physics Tooling`;
+    document.title = `${title} — ${APP_NAME}`;
   }, [title]);
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">∑</span> Physics Tooling</div>
+        <div className="brand" title={APP_NAME}><span className="brand-mark">∑</span> <span className="brand-full">{APP_NAME}</span><span className="brand-short">{APP_SHORT_NAME}</span></div>
         <nav className="tabs" role="tablist">
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)} title={t.hint}>{t.name}</button>

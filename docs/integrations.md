@@ -1,6 +1,6 @@
 # Working with other software
 
-Physics Tooling is open source and needs nothing else to run. If you already
+Math & Physics Workbench is open source and needs nothing else to run. If you already
 have MATLAB, Mathematica, Python or Julia, it can also work alongside them.
 Nothing proprietary is bundled, linked or required: the app only writes plain
 scripts and, if you ask it to, runs them in a program you have installed.

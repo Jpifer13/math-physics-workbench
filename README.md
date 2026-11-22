@@ -1,4 +1,4 @@
-# Physics Tooling
+# Math & Physics Workbench
 
 A desktop virtual laboratory for physicists and mathematicians: define a
 dynamical system, integrate it, and run numerical experiments on it — then
@@ -306,7 +306,7 @@ What the tool is built for, and where it stops:
 
 ## Licence
 
-Physics Tooling is free software under the **GNU Affero General Public License,
+Math & Physics Workbench is free software under the **GNU Affero General Public License,
 version 3 or later** (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). Copyright
 © 2026 Pifer Labs LLC.
 

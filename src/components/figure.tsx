@@ -4,6 +4,7 @@
  * builds its own figure; the buttons, the size settings and the file formats
  * are shared here.
  */
+import { readStored, storageKey } from '../core/brand';
 import { useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -13,11 +14,11 @@ import { saveFile, tidy } from '../saveFile';
 import { DEFAULT_ASPECT, pageSize, parseSize, rasterScale, type FigureSettings } from './figureSize';
 
 const NS = 'http://www.w3.org/2000/svg';
-const STORAGE_KEY = 'physics-tooling.figure.v1';
+const STORAGE = 'figure.v1';
 
 function restore(): FigureSettings {
   try {
-    const s = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    const s = JSON.parse(readStored(localStorage, STORAGE) ?? 'null');
     if (s && typeof s === 'object') {
       const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : null);
       return { widthMm: num(s.widthMm), heightMm: num(s.heightMm), fontPt: num(s.fontPt) };
@@ -34,7 +35,7 @@ export const useFigure = create<FigureSettings & { set: (s: Partial<FigureSettin
   set: (s) => {
     set(s);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ widthMm: get().widthMm, heightMm: get().heightMm, fontPt: get().fontPt }));
+      localStorage.setItem(storageKey(STORAGE), JSON.stringify({ widthMm: get().widthMm, heightMm: get().heightMm, fontPt: get().fontPt }));
     } catch {
       /* the setting still applies for this session */
     }

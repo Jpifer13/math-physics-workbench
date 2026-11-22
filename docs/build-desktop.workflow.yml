@@ -43,7 +43,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
-          name: physics-tooling-${{ matrix.os }}
+          name: math-physics-workbench-${{ matrix.os }}
           path: |
             release/*.exe
             release/*.dmg

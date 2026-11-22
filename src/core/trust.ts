@@ -3,6 +3,7 @@
  * checking that a run has converged, testing a run against stated
  * expectations, and recording what produced a result.
  */
+import { provenanceTitle } from './brand';
 import { interpolate } from './fit';
 import { MEASURES, measureRun } from './measure';
 import { simulate, type Expectation, type OdeModel, type ScanConfig, type SimResult, type SolverMethod, type UncertaintyConfig } from './ode';
@@ -191,7 +192,7 @@ export function provenance(model: OdeModel, o: ProvenanceOptions): string[] {
   const method = model.method ?? 'rk4';
   const adaptive = method === 'rk45' || method === 'ros23';
   const lines = [
-    `Physics Tooling ${o.appVersion} — exported ${o.when}`,
+    provenanceTitle(o.appVersion, o.when),
     `model: ${model.name || 'Untitled simulation'} (fingerprint ${fingerprint(modelEssence(model))})`,
     `solver: ${METHOD_LABEL[method]}, ${adaptive ? `relative tolerance ${model.tol ?? (method === 'ros23' ? 1e-6 : 1e-8)}` : `step ${model.dt}`}, duration ${model.tEnd}`,
     `parameters: ${model.params.map((p) => `${p.name} = ${o.overrides?.[p.name] ?? p.value}${p.unit ? ` ${p.unit}` : ''}`).join('; ') || 'none'}`,

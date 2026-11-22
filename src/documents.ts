@@ -2,6 +2,7 @@
  * Document commands shared by the toolbars and the native menu:
  * New, Open, Save, Save As for both document kinds, plus data export.
  */
+import { APP_NAME } from './core/brand';
 import { create } from 'zustand';
 import { diffFlow, diffSim, flowFile, readDocument, simFile, type Change, type FlowFile } from './core/docfile';
 import { simulate, type OdeModel } from './core/ode';
@@ -81,8 +82,8 @@ export function confirmDiscard(kind: DocKind): boolean {
 
 /** Why a file could not be read, in the user's terms; '' when it could. */
 function unreadable(file: OpenedFile, r: ReturnType<typeof readDocument>): string {
-  if (r.kind === 'newer') return `“${baseName(file.path)}” was saved by a newer version of Physics Tooling (file format ${r.format}; this version reads up to ${FILE_FORMAT}). Update the app to open it.`;
-  return r.kind === 'unknown' ? `“${baseName(file.path)}” is not a Physics Tooling document.` : '';
+  if (r.kind === 'newer') return `“${baseName(file.path)}” was saved by a newer version of ${APP_NAME} (file format ${r.format}; this version reads up to ${FILE_FORMAT}). Update the app to open it.`;
+  return r.kind === 'unknown' ? `“${baseName(file.path)}” is not a ${APP_NAME} document.` : '';
 }
 
 /** Load a file's contents into whichever workspace it belongs to. */

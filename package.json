@@ -1,5 +1,5 @@
 {
-  "name": "physics-tooling",
+  "name": "math-physics-workbench",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -32,13 +32,14 @@
     "vitest": "^5.1.1",
     "zustand": "^5.1.0"
   },
-  "productName": "Physics Tooling",
-  "description": "A virtual laboratory for building simulations and running numerical experiments.",
+  "productName": "Math & Physics Workbench",
+  "description": "Open-source desktop app for learning and doing math and physics: graph functions, simulate differential equations, run numerical experiments, and fit models to data.",
   "author": "Pifer Labs LLC",
   "main": "electron/main.cjs",
   "build": {
-    "appId": "io.physicstooling.app",
-    "productName": "Physics Tooling",
+    "appId": "io.mathphysicsworkbench.app",
+    "productName": "Math & Physics Workbench",
+    "artifactName": "math-physics-workbench-${version}-${os}-${arch}.${ext}",
     "files": [
       "dist/**",
       "electron/**",
@@ -54,13 +55,13 @@
       {
         "ext": "physsim",
         "name": "Physics Simulation",
-        "description": "Physics Tooling simulation",
+        "description": "Math & Physics Workbench simulation",
         "role": "Editor"
       },
       {
         "ext": "physflow",
         "name": "Physics Flow",
-        "description": "Physics Tooling equation flow",
+        "description": "Math & Physics Workbench equation flow",
         "role": "Editor"
       }
     ],
@@ -77,6 +78,7 @@
     },
     "linux": {
       "category": "Education;Science",
+      "executableName": "math-physics-workbench",
       "target": [
         "AppImage",
         "deb"

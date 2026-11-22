@@ -95,6 +95,10 @@ input[type='checkbox'] { accent-color: var(--accent); margin: 0; }
   background: #0f548c; color: #fff;
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15px; }
+.brand { white-space: nowrap; }
+.brand-short { display: none; }
+/* The full name needs room beside the tabs; narrower windows get the short one. */
+@media (max-width: 1180px) { .brand-full { display: none; } .brand-short { display: inline; } }
 .brand-mark {
   display: grid; place-items: center; width: 24px; height: 24px; border-radius: 5px;
   background: #fff; color: #0f548c; font-weight: 700;

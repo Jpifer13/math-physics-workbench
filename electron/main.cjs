@@ -8,6 +8,12 @@ const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { migrateUserData } = require('./migrate.cjs');
+
+/** The program's name, from package.json (productName). */
+const APP_NAME = app.getName();
+// On Windows and Linux an ampersand in a menu label marks a keyboard shortcut; doubling it shows one.
+const menuLabel = (text) => (process.platform === 'darwin' ? text : text.replace(/&/g, '&&'));
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const isMac = process.platform === 'darwin';
@@ -25,7 +31,7 @@ const DOC_TYPES = {
   jl: { name: 'Julia script', extensions: ['jl'] },
 };
 const OPEN_FILTERS = [
-  { name: 'Physics Tooling documents', extensions: ['physsim', 'physflow', 'json'] },
+  { name: `${APP_NAME} documents`, extensions: ['physsim', 'physflow', 'json'] },
   { name: 'All files', extensions: ['*'] },
 ];
 const safeName = (name, fallback) => String(name || fallback).replace(/[\\/:*?"<>|]+/g, '-');
@@ -149,7 +155,7 @@ ipcMain.handle('export:pdf', async (_e, svg, widthMm, heightMm, suggestedName) =
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
 <style>@page { size: ${w}mm ${h}mm; margin: 0 } html, body { margin: 0; width: ${w}mm; height: ${h}mm; overflow: hidden }
 body > svg { display: block; width: ${w}mm; height: ${h}mm }</style></head><body>${svg}</body></html>`;
-  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'physics-tooling-figure-'));
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'math-physics-workbench-figure-'));
   const view = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true, contextIsolation: true, nodeIntegration: false } });
   try {
     const page = path.join(dir, 'figure.html');
@@ -170,7 +176,7 @@ body > svg { display: block; width: ${w}mm; height: ${h}mm }</style></head><body
 });
 
 // ------------------------------------------------- external engines
-// Other scientific software the user has installed. Physics Tooling never ships or
+// Other scientific software the user has installed. The app never ships or
 // requires any of these; it only runs a script it generated, in a scratch folder.
 const ENGINES = {
   python: { name: 'Python', commands: ['python3', 'python'], script: 'physics_model.py', args: (f) => [f] },
@@ -231,7 +237,7 @@ ipcMain.handle('engine:run', (_e, id, code) => new Promise((resolve) => {
   const exe = engine ? enginePath(id).path : null;
   if (!engine || typeof code !== 'string') return resolve({ ok: false, log: 'Unknown program' });
   if (!exe) return resolve({ ok: false, log: `${engine.name} was not found on this computer` });
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'physics-tooling-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'math-physics-workbench-'));
   const cleanup = () => fs.rm(dir, { recursive: true, force: true }, () => {});
   const started = Date.now();
   fs.writeFileSync(path.join(dir, engine.script), code, 'utf8');
@@ -329,13 +335,13 @@ function buildMenu() {
       role: 'help',
       submenu: [
         {
-          label: 'About Physics Tooling',
+          label: menuLabel(`About ${APP_NAME}`),
           click: () =>
             dialog.showMessageBox(win, {
               type: 'info',
-              title: 'About Physics Tooling',
-              message: 'Physics Tooling',
-              detail: `Version ${app.getVersion()}\nA virtual laboratory for building simulations and running numerical experiments.`,
+              title: `About ${APP_NAME}`,
+              message: APP_NAME,
+              detail: `Version ${app.getVersion()}\nFor learning and doing math and physics: graph functions, simulate differential equations, run numerical experiments, and fit models to data.\n\nFree software under the GNU Affero General Public License, version 3 or later.`,
             }),
         },
       ],
@@ -357,7 +363,7 @@ function createWindow() {
     minHeight: 620,
     show: false,
     backgroundColor: '#f3f2f1',
-    title: 'Physics Tooling',
+    title: APP_NAME,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -428,6 +434,11 @@ if (!app.requestSingleInstanceLock()) {
     if (app.isReady() && !win) createWindow();
     deliverFile(filePath);
   });
+  // The app was renamed; on the first launch under the new name, bring saved state across from the old
+  // data folder. Before anything is ready, so the window and its storage open on the migrated copy.
+  // Skipped when a data folder was chosen on the command line (tests, portable use).
+  if (!app.commandLine.hasSwitch('user-data-dir')) migrateUserData(app.getPath('userData'), app.getPath('appData'));
+
   app.whenReady().then(() => {
     pendingFile = pendingFile ?? docArg(process.argv) ?? null;
     buildMenu();

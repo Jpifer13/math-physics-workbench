@@ -1,3 +1,4 @@
+import { RUN_RECORD_KIND } from '../core/brand';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { measure, toCsv } from '../core/measure';
 import { sampleIndex, type Expectation, type MeasureId, type OdeModel, type SimResult } from '../core/ode';
@@ -125,7 +126,7 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
 
   const exportRecord = async () => {
     const record = {
-      kind: 'physics-tooling-run-record', format: FILE_FORMAT, provenance: stamp(),
+      kind: RUN_RECORD_KIND, format: FILE_FORMAT, provenance: stamp(),
       model: { ...model, data: undefined },
       result: { t: run.t, series: run.series, eventTimes: run.eventTimes ?? [], stats: run.stats },
       expectations: expectations.map((e) => ({ statement: e.text, actual: e.actual, pass: e.pass })),

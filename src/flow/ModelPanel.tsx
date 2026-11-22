@@ -1,3 +1,4 @@
+import { provenanceTitle } from '../core/brand';
 import { useContext, useMemo, useState } from 'react';
 import { toLatex, toText } from '../core/expr';
 import { toCsv } from '../core/measure';
@@ -95,7 +96,7 @@ export function ModelPanel() {
     let csv = '';
     // Record what produced the numbers: the formula and every input's value.
     const header = [
-      `Physics Tooling ${APP_VERSION} — exported ${new Date().toISOString()}`,
+      provenanceTitle(APP_VERSION, new Date().toISOString()),
       `flow: ${useFlow.getState().name}`,
       ...(result?.ex ? [`formula: ${outCfg?.symbol || outName} = ${toText(result.ex)}`] : []),
       `inputs: ${inputs.map((i) => { const c = i.data.cfg as QuantityData; return `${c.symbol || c.label} = ${c.value}${c.unit ? ` ${c.unit}` : ''}`; }).join('; ')}`,

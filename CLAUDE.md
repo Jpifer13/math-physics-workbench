@@ -1,4 +1,4 @@
-# Physics Tooling — working notes
+# Math & Physics Workbench — working notes
 
 A desktop virtual laboratory for physicists and mathematicians: define a
 dynamical system, integrate it, run numerical experiments, fit it to data, and
@@ -8,13 +8,25 @@ AGPL-3.0-or-later, copyright Pifer Labs LLC.
 Read `README.md` for the feature tour, `docs/roadmap.md` for what to build next
 and why, and `docs/integrations.md` for the bridges to other software.
 
+## The name
+
+The app was called **Physics Tooling** until November 2026. `core/brand.ts`
+holds the name (`APP_NAME`, `APP_SHORT_NAME`, `APP_SLUG`); use those rather
+than typing it. The old name survives on purpose in three places, and nowhere
+else: `core/brand.ts` (reading old export headers, run records and storage
+keys), `electron/migrate.cjs` (copying the old data folder on first launch),
+and the changelog. The `.physsim` and `.physflow` extensions are not part of
+the name and must not change. The ampersand needs care: `&amp;` in HTML, and
+doubled in native menu labels on Windows and Linux (`menuLabel` in
+`electron/main.cjs`).
+
 ## Commands
 
 ```bash
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~190 tests
+npm test             # vitest; ~205 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
@@ -40,10 +52,12 @@ run on a machine without them has **not** verified the Python or MATLAB export.
 electron/main.cjs      Desktop shell: window, menu, file dialogs, disk access,
                        running external programs. The only code with Node access.
 electron/preload.cjs   The bridge exposed to the UI as window.desktop.
+electron/migrate.cjs   One-time copy of saved state from the pre-rename data folder.
 src/desktop.ts         Typed view of that bridge (undefined in a browser).
 src/core/              Engine. No React, no DOM. Everything here is unit-tested.
   ode.ts                 Model types; Euler, RK4, RK45, Rosenbrock23; events
   fastExpr.ts            Compiles expressions to closures (mathjs fallback)
+  brand.ts               The app's name; reading files written under its old one
   measure.ts             Measurements, parameter scans, CSV
   docfile.ts             File reading/writing, document diff, flow auto-layout
   lint.ts                "Check my model": likely mistakes that are not errors
@@ -174,8 +188,9 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 **Not verified — treat as untested:**
 - Mathematica and Julia export: generated, never run against a real install.
 - MATLAB itself: the `.m` export is verified in GNU Octave only.
-- macOS and Windows packaging (`npm run dist`): only Linux has been exercised.
-  The unpackaged app runs on macOS; Windows has not been run at all.
+- Installers (`npm run dist`): only Linux has been built. On macOS the
+  unpacked app (`npm run dist:dir`) builds with the right name and bundle id
+  but was not launched; Windows has not been run at all.
 - Code signing and notarisation: documented in the README, never run.
 - The installer workflow (`docs/build-desktop.workflow.yml`): never run.
 - The LaTeX summary: structurally tested, never compiled.

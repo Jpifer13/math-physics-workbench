@@ -1,6 +1,7 @@
 # Changelog
 
-Notable changes to Physics Tooling, newest first. The format follows
+Notable changes to Math & Physics Workbench (called Physics Tooling until
+November 2026), newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
@@ -47,6 +48,14 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 - This changelog.
 
 ### Changed
+
+- **The app is now called Math & Physics Workbench** (it was Physics Tooling).
+  The package and repository are `math-physics-workbench` and the application
+  id is `io.mathphysicsworkbench.app`. Nothing about your files changes:
+  `.physsim` and `.physflow` keep their extensions and format, and files and
+  exports written under the old name open and import as before. On first
+  launch the app copies your window position, located programs and working
+  copies from the old data folder, which it leaves in place.
 
 - File format is now 3. Files are laid out for version control: fixed key
   order, one item per line, and a flow's block positions in their own

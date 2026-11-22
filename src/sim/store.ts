@@ -1,8 +1,9 @@
+import { readStored, storageKey } from '../core/brand';
 import { create } from 'zustand';
 import type { OdeModel, SimResult } from '../core/ode';
 import { MODELS } from './models';
 
-const STORAGE_KEY = 'physics-tooling.sim.v1';
+const STORAGE = 'sim.v1';
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 /** A minimal starting point for a new simulation. */
@@ -50,7 +51,7 @@ export function normalizeModel(m: OdeModel): OdeModel {
 
 function restore(): OdeModel {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readStored(localStorage, STORAGE);
     if (raw) {
       const m = JSON.parse(raw);
       if (isModel(m)) return normalizeModel(m);
@@ -108,7 +109,7 @@ useSim.subscribe(() => {
     const dirty = json !== savedJson;
     if (dirty !== useSim.getState().dirty) useSim.setState({ dirty });
     try {
-      localStorage.setItem(STORAGE_KEY, json);
+      localStorage.setItem(storageKey(STORAGE), json);
     } catch {
       /* storage unavailable — the working copy simply isn't kept */
     }

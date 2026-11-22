@@ -1,4 +1,4 @@
-# Physics Tooling — command-line entry points.
+# Math & Physics Workbench — command-line entry points.
 # Thin wrappers over the npm scripts in package.json, plus a few checks that
 # have no npm script. Run `make` or `make help` for the list.
 

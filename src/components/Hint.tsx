@@ -1,10 +1,11 @@
+import { readStored, storageKey } from '../core/brand';
 import { create } from 'zustand';
 
-const STORAGE_KEY = 'physics-tooling.hints.v1';
+const STORAGE = 'hints.v1';
 
 function restore(): string[] {
   try {
-    const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
+    const v = JSON.parse(readStored(localStorage, STORAGE) ?? '[]');
     return Array.isArray(v) ? v.map(String) : [];
   } catch {
     return [];
@@ -12,7 +13,7 @@ function restore(): string[] {
 }
 const keep = (dismissed: string[]) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dismissed));
+    localStorage.setItem(storageKey(STORAGE), JSON.stringify(dismissed));
   } catch {
     /* the tips simply come back next time */
   }

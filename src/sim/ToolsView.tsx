@@ -1,3 +1,4 @@
+import { APP_NAME } from '../core/brand';
 import { useEffect, useMemo, useState } from 'react';
 import { parseTable } from '../core/fit';
 import { compareRuns, type Difference } from '../core/trust';
@@ -129,7 +130,7 @@ export function ToolsView({ model, run }: { model: OdeModel; run: SimResult }) {
         ) : (
           <>
             <p className="muted help">
-              If you have one of these programs installed, Physics Tooling can run the script above in it and compare the answer with its own —
+              If you have one of these programs installed, {APP_NAME} can run the script above in it and compare the answer with its own —
               an independent check on the result. Nothing is installed or sent anywhere; the script runs on this computer in a temporary folder.
             </p>
             <table className="table compact">
