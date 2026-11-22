@@ -11,7 +11,7 @@ and why, and `docs/integrations.md` for the bridges to other software.
 ## Commands
 
 ```bash
-npm install          # also downloads the Electron binary
+npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
 npm test             # vitest; ~140 tests
@@ -21,6 +21,11 @@ npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
 npm run dist         # installer for the current OS
 npm run dev:web      # UI only, in a browser — no file dialogs or external tools
 ```
+
+The `Makefile` wraps these (`make` lists the targets). Two are worth knowing:
+`make check` runs the type-check and the tests together, and `make doctor`
+reports whether SciPy, Octave and the other external tools are on the PATH.
+A new npm script should get a matching target.
 
 Always run `npm run typecheck` as well as `npm test`: vitest does not
 type-check, so a wrong call signature in a test passes silently.

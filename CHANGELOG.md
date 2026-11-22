@@ -19,6 +19,8 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   time, and Sobol first-order and total sensitivity indices with intervals.
   The analysis is saved with the simulation and recorded in CSV exports.
 - Charts can draw shaded bands.
+- A `Makefile` for running, checking and building from the command line;
+  `make doctor` reports which optional external tools are installed.
 - This changelog.
 
 ### Changed

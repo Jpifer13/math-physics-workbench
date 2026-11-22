@@ -156,6 +156,11 @@ npm start          # build, then launch the app as it will ship
 npm test           # unit tests
 ```
 
+The same commands are available through `make`: `make dev`, `make start`,
+`make check` (type-check and tests together), and `make doctor`, which reports
+whether the optional programs below are installed. `make` on its own lists
+every target.
+
 The tests that check exported scripts run only where the relevant program is
 installed (Python with SciPy, GNU Octave) and skip themselves elsewhere.
 
