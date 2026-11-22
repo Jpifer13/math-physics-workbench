@@ -80,9 +80,13 @@ view on the left and every edit re-runs immediately.
 - **Undo / redo** for every edit to a simulation or a flow.
 - **Export** — any run or experiment as CSV at full double precision, with a
   header recording the app version, model, parameters and solver that produced
-  it. A *run record* bundles model, result and provenance in one file. Line
-  charts save as SVG or PNG, and the model's equations, parameter table and
-  method description copy as LaTeX or Markdown.
+  it. A *run record* bundles model, result and provenance in one file. Every
+  chart saves as an image from buttons that appear when you point at it: SVG,
+  PNG or PDF for line charts, heat maps and bar charts, PNG or PDF for 3D
+  views. *Size…* sets the width and height on the page and the text size, so
+  figures come out at a journal's column width with matching lettering. The
+  model's equations, parameter table and method description copy as LaTeX or
+  Markdown.
 - **Other software** — export the model as a script for Python (SciPy), MATLAB
   or Octave, Mathematica, or Julia; or run it in one you have installed and
   compare the result with this app's own, as an independent check. See

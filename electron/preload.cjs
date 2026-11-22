@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('desktop', {
   saveDocument: (text, filePath, suggestedName, ext) => ipcRenderer.invoke('doc:save', text, filePath, suggestedName, ext),
   /** Export data (e.g. CSV) through a Save dialog. Resolves to the path, or null. */
   exportFile: (text, suggestedName, ext, encoding) => ipcRenderer.invoke('export:save', text, suggestedName, ext, encoding),
+  /** Write an SVG figure as a one-page PDF of the given size (mm) through a Save dialog. Resolves to the path, or null. */
+  exportPdf: (svg, widthMm, heightMm, suggestedName) => ipcRenderer.invoke('export:pdf', svg, widthMm, heightMm, suggestedName),
   /** Other scientific software installed on this computer: [{ id, name, path, custom }]. */
   listEngines: () => ipcRenderer.invoke('engine:list'),
   /** Ask the user where a program lives. Resolves to the chosen path, or null. */

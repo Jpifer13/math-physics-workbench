@@ -18,6 +18,7 @@ const DOC_TYPES = {
   json: { name: 'JSON', extensions: ['json'] },
   svg: { name: 'SVG vector image', extensions: ['svg'] },
   png: { name: 'PNG image', extensions: ['png'] },
+  pdf: { name: 'PDF document', extensions: ['pdf'] },
   py: { name: 'Python script', extensions: ['py'] },
   m: { name: 'MATLAB / Octave script', extensions: ['m'] },
   wl: { name: 'Wolfram Language script', extensions: ['wl'] },
@@ -129,6 +130,42 @@ ipcMain.handle('export:save', async (_e, text, suggestedName, ext, encoding) => 
   });
   if (r.canceled || !r.filePath) return null;
   await fs.promises.writeFile(r.filePath, text, encoding === 'base64' ? 'base64' : 'utf8');
+  return r.filePath;
+});
+
+// A figure as a PDF: the SVG is laid on a page of exactly its own size in a hidden window and printed.
+// The window runs no scripts and may load nothing but the images embedded in the figure.
+ipcMain.handle('export:pdf', async (_e, svg, widthMm, heightMm, suggestedName) => {
+  if (typeof svg !== 'string' || !(widthMm > 0) || !(heightMm > 0)) throw new Error('Nothing to export');
+  const r = await dialog.showSaveDialog(win, {
+    title: 'Export',
+    defaultPath: `${safeName(suggestedName, 'figure')}.pdf`,
+    filters: [DOC_TYPES.pdf],
+  });
+  if (r.canceled || !r.filePath) return null;
+  const w = Number(widthMm).toFixed(3);
+  const h = Number(heightMm).toFixed(3);
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
+<style>@page { size: ${w}mm ${h}mm; margin: 0 } html, body { margin: 0; width: ${w}mm; height: ${h}mm; overflow: hidden }
+body > svg { display: block; width: ${w}mm; height: ${h}mm }</style></head><body>${svg}</body></html>`;
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'physics-tooling-figure-'));
+  const view = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  try {
+    const page = path.join(dir, 'figure.html');
+    await fs.promises.writeFile(page, html, 'utf8');
+    await view.loadFile(page);
+    const pdf = await view.webContents.printToPDF({
+      preferCSSPageSize: true,
+      printBackground: true,
+      pageSize: { width: widthMm / 25.4, height: heightMm / 25.4 },
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    });
+    await fs.promises.writeFile(r.filePath, pdf);
+  } finally {
+    view.destroy();
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  }
   return r.filePath;
 });
 

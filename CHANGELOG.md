@@ -18,6 +18,11 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   a measurement with 68% and 95% intervals, a band around the observable over
   time, and Sobol first-order and total sensitivity indices with intervals.
   The analysis is saved with the simulation and recorded in CSV exports.
+- **Figure export for every chart.** Heat maps and bar charts now save as
+  SVG, PNG or PDF, and 3D views as PNG or PDF. Line charts gain PDF.
+- **Figure size.** *Size…* on any chart sets the width and height on the page
+  (mm) and the text size (pt) for all exported charts. The chart is laid out
+  again at that size, so text comes out at the size asked.
 - **Tied fit parameters.** In *Fit to data*, a parameter can follow an
   expression in the others (`k2 = 2 * k`) instead of being fitted or fixed.
   Its fitted value and uncertainty are reported with the rest.

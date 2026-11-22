@@ -6,7 +6,7 @@ export interface OpenedFile {
 export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math';
 export type DocExt = 'physsim' | 'physflow';
 
-export type ExportExt = 'csv' | 'json' | 'svg' | 'png' | 'py' | 'm' | 'wl' | 'jl';
+export type ExportExt = 'csv' | 'json' | 'svg' | 'png' | 'pdf' | 'py' | 'm' | 'wl' | 'jl';
 
 /** A separately installed program that can run generated scripts. */
 export interface EngineInfo {
@@ -21,6 +21,8 @@ export interface DesktopApi {
   openDocument(): Promise<OpenedFile | null>;
   saveDocument(text: string, filePath: string | null, suggestedName: string, ext: DocExt): Promise<string | null>;
   exportFile(text: string, suggestedName: string, ext: ExportExt, encoding?: 'utf8' | 'base64'): Promise<string | null>;
+  /** Write an SVG as a one-page PDF of the given size, through a Save dialog. Resolves to the path, or null. */
+  exportPdf(svg: string, widthMm: number, heightMm: number, suggestedName: string): Promise<string | null>;
   listEngines(): Promise<EngineInfo[]>;
   locateEngine(id: string): Promise<string | null>;
   runEngine(id: string, code: string): Promise<{ ok: boolean; csv?: string; log: string; ms?: number; program?: string }>;

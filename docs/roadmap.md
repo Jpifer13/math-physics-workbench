@@ -181,13 +181,19 @@ per person per year. The figures are self-reported.
 *Evidence: peer-reviewed survey ([LeBlanc et al., PLoS ONE][formatting]); it
 does not separate out figure work.*
 
-**Status: mostly done.** Line charts export as SVG (vector) or PNG (3×) from
-buttons that appear on hover; the export is standalone, with a white
-background and legend, and leaves out the playback cursor. *Copy as LaTeX /
-Markdown* produces the equations, initial conditions, a parameter table and a
-sentence describing the numerical method. **Still open:** exporting heat maps
-and 3D views as images, PDF output, and choosing a figure's physical size and
-font size.
+**Status: done.** Every chart exports from buttons that appear on hover: line
+charts, heat maps and bar charts as SVG, PNG or PDF; 3D views as PNG or PDF,
+from the angle they are turned to. The export is standalone, with a white
+background and legend, and leaves out the playback cursor. *Size…* sets the
+width and height on the page in millimetres and the text size in points; the
+chart is laid out again for that size rather than scaled, so the lettering
+comes out as asked and the same in every figure. With a width and no height a
+figure takes a standard shape instead of the flat one that fills a window.
+*Copy as LaTeX / Markdown* produces the equations, initial conditions, a
+parameter table and a sentence describing the numerical method.
+**Limits:** heat-map cells and 3D views are bitmaps inside the SVG and PDF
+(300 dpi at a set width); a small 3D figure shrinks its text rather than let
+labels collide; bar charts keep the height their rows need.
 
 ### 10. Visual models that cannot be compared or do not scale
 
@@ -249,10 +255,9 @@ free of UI code, which makes this mostly packaging.
 
 ## Suggested order for what remains
 
-Done: items 1 to 8; item 9 mostly.
+Done: items 1 to 9.
 
-1. The rest of item 9 — images of heat maps and 3D views, figure sizing, PDF.
-2. Items 10, 11, 12 as the user base and model sizes grow.
+1. Items 10, 11, 12 as the user base and model sizes grow.
 
 ## Sources
 

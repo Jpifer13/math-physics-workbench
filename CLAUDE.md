@@ -14,7 +14,7 @@ and why, and `docs/integrations.md` for the bridges to other software.
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~145 tests
+npm test             # vitest; ~150 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
@@ -60,7 +60,8 @@ src/sim/               Simulations workspace (the main one)
 src/flow/              Equation Flows workspace (React Flow node editor)
 src/mathtools/         Grapher, 3D surfaces, vector fields, units
 src/integrations/      Code export: python.ts, matlab.ts, mathematica.ts, julia.ts
-src/components/        Plot (SVG), Heatmap, Plot3D (three.js, lazy), Tex, …
+src/components/        Plot (SVG), Heatmap, Plot3D (three.js, lazy), Bars, Tex, …
+  figure.tsx, figureSize.ts   Figure export shared by every chart type
 src/documents.ts       New/Open/Save/undo for both document kinds
 ```
 
@@ -79,7 +80,9 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   and `UncertaintyView.tsx`, and to `modelEssence` in `core/trust.ts`;
   display-only fields stay out.
 - **Charts.** One y-axis per chart. Series colours come from the fixed
-  `--series-1…8` order in `styles.css`; don't invent colours.
+  `--series-1…8` order in `styles.css`; don't invent colours. A new chart
+  type gets its export buttons from `FigureExport` in `components/figure.tsx`
+  by supplying a `build` function; sizing arithmetic lives in `figureSize.ts`.
 - **Plain-language errors.** Messages say what happened and what to do, in the
   user's terms. No raw exceptions in the UI.
 - **Commits** go on a feature branch, not straight to `main`.
@@ -149,7 +152,7 @@ so do look.
 
 Done and verified: the three workspaces, four solvers with events, experiments
 (1-D and 2-D), uncertainty propagation and Sobol sensitivity, fitting with
-uncertainties, ties, profiles and bootstrap, accuracy checks, expectations, provenance, unit
+uncertainties, ties, profiles and bootstrap, figure export (SVG, PNG, PDF), accuracy checks, expectations, provenance, unit
 checking, undo/redo, code export, running in external tools, the desktop
 shell, and Linux packaging.
 
@@ -166,8 +169,6 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 - Code signing and notarisation: documented in the README, never run.
 - The installer workflow (`docs/build-desktop.workflow.yml`): never run.
 - The LaTeX summary: structurally tested, never compiled.
-- Exporting 3D views and heat maps on a real GPU: only on-screen rendering
-  has been checked.
 
 **Waiting on the owner:**
 - Copy `docs/build-desktop.workflow.yml` to `.github/workflows/` to enable
@@ -176,11 +177,9 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 - Whether to add a contributor agreement before accepting outside contributions.
 
 **Next, in roadmap order** (`docs/roadmap.md` has the evidence and detail):
-1. Rest of item 9 — image export for heat maps and 3D views; figure size and
-   font control; PDF.
-2. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
+1. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
    inputs; feeding fitted uncertainties in as the input spread.
-3. Items 10–12 — diff-friendly files and a compare view, sub-flows, in-app
+2. Items 10–12 — diff-friendly files and a compare view, sub-flows, in-app
    function reference, a command-line mode.
 
 Known rough edges: `npm audit` reports a moderate advisory in the installer

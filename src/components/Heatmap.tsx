@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtNum } from '../core/units';
+import { FigureExport, offscreen, standaloneSvg, type Figure } from './figure';
+import { layoutHeight, layoutWidth, type FigureSettings } from './figureSize';
 import { makeScale, tickLabel } from './scale';
 import { useWidth } from './useSize';
 
@@ -13,6 +15,8 @@ interface Props {
   zLabel: string;
   height?: number;
   marker?: { x: number; y: number };
+  /** Base name for exported image files; defaults to the axis labels. */
+  exportName?: string;
 }
 
 const M = { top: 12, right: 86, bottom: 40, left: 62 };
@@ -21,7 +25,20 @@ const LO = [222, 235, 250];
 const HI = [9, 48, 105];
 const ramp = (u: number) => LO.map((c, i) => Math.round(c + (HI[i] - c) * u));
 
-export function Heatmap({ xs, ys, z, xLabel, yLabel, zLabel, height = 260, marker }: Props) {
+/** The cells as a PNG, enlarged without smoothing so every cell keeps hard edges wherever the figure ends up. */
+function cellsImage(cells: HTMLCanvasElement): string {
+  const k = Math.max(1, Math.ceil(1600 / Math.max(cells.width, cells.height)));
+  const big = document.createElement('canvas');
+  big.width = cells.width * k;
+  big.height = cells.height * k;
+  const ctx = big.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(cells, 0, 0, big.width, big.height);
+  return big.toDataURL('image/png');
+}
+
+export function Heatmap(props: Props) {
+  const { xs, ys, z, xLabel, yLabel, zLabel, height = 260, marker, exportName } = props;
   const [ref, width] = useWidth<HTMLDivElement>();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [tip, setTip] = useState<{ left: number; top: number; text: string[] } | null>(null);
@@ -58,11 +75,32 @@ export function Heatmap({ xs, ys, z, xLabel, yLabel, zLabel, height = 260, marke
     ctx.putImageData(img, 0, 0);
   }, [xs, ys, z, zmin, zmax]);
 
+  const figure = async (settings: FigureSettings): Promise<Figure | null> => {
+    const lw = layoutWidth(width, settings);
+    const grab = (host: HTMLElement | null) => {
+      const svg = host?.querySelector('svg');
+      const cells = host?.querySelector('canvas');
+      if (!svg || !cells || !cells.width) return null;
+      const w = svg.width.baseVal.value, h = svg.height.baseVal.value;
+      const underlay = { href: cellsImage(cells), x: M.left, y: M.top, width: Math.max(40, w - M.left - M.right), height: Math.max(40, h - M.top - M.bottom), pixelated: true };
+      return { ...standaloneSvg(svg, { underlay }), shownPx: width };
+    };
+    const lh = layoutHeight(width, height, settings);
+    if (lw === width && lh === height) return grab(ref.current);
+    const copy = await offscreen(<Heatmap {...props} height={lh} />, lw);
+    try {
+      return grab(copy.el);
+    } finally {
+      copy.dispose();
+    }
+  };
+
   const zTicks = makeScale(zmin, zmax, false, 4).ticks.filter((t) => t >= zmin && t <= zmax);
   const gradId = useMemo(() => `grad-${Math.random().toString(36).slice(2)}`, []);
 
   return (
     <div className="plot viz-root" ref={ref} style={{ height }}>
+      <FigureExport name={exportName ?? `${zLabel} over ${xLabel} and ${yLabel}`} build={figure} />
       <canvas
         ref={canvas}
         className="heatmap-canvas"

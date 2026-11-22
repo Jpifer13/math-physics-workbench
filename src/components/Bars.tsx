@@ -1,3 +1,5 @@
+import { FigureExport, offscreen, standaloneSvg, type Figure } from './figure';
+import { layoutWidth, type FigureSettings } from './figureSize';
 import { seriesColor } from './Plot';
 import { useWidth } from './useSize';
 
@@ -18,7 +20,8 @@ const GAP = 12;
 const M = { top: 6, right: 44, bottom: 26, left: 120 };
 
 /** Horizontal grouped bars of shares between 0 and 1, labelled as percentages. */
-export function Bars({ rows, series, label }: { rows: BarRow[]; series: string[]; label: string }) {
+export function Bars(props: { rows: BarRow[]; series: string[]; label: string }) {
+  const { rows, series, label } = props;
   const [ref, width] = useWidth<HTMLDivElement>();
   const group = series.length * ROW;
   const ih = rows.length * (group + GAP);
@@ -29,6 +32,22 @@ export function Bars({ rows, series, label }: { rows: BarRow[]; series: string[]
   const px = (v: number) => M.left + (Math.min(top, Math.max(0, v)) / top) * iw;
   const ticks = [0, 0.25, 0.5, 0.75, 1];
 
+  const figure = async (settings: FigureSettings): Promise<Figure | null> => {
+    const host = ref.current;
+    if (!host) return null;
+    const legend = [...host.querySelectorAll<HTMLElement>('.plot-legend .swatch')].map((el, k) => ({ name: series[k], color: getComputedStyle(el).color }));
+    const lw = layoutWidth(width, settings);
+    const live = host.querySelector('svg');
+    if (lw === width) return live ? { ...standaloneSvg(live, { legend }), shownPx: width } : null;
+    const copy = await offscreen(<Bars {...props} />, lw);
+    try {
+      const svg = copy.el.querySelector('svg');
+      return svg ? { ...standaloneSvg(svg, { legend }), shownPx: width } : null;
+    } finally {
+      copy.dispose();
+    }
+  };
+
   return (
     <div className="plot-wrap viz-root" ref={ref}>
       <div className="plot-legend">
@@ -36,6 +55,8 @@ export function Bars({ rows, series, label }: { rows: BarRow[]; series: string[]
           <span key={name}><span className="swatch bar" style={{ color: seriesColor(k + 1) }} />{name}</span>
         ))}
       </div>
+      <div className="plot">
+      <FigureExport name={label} build={figure} />
       <svg width={width} height={height} role="img" aria-label={label}>
         {ticks.map((t) => (
           <g key={t}>
@@ -67,6 +88,7 @@ export function Bars({ rows, series, label }: { rows: BarRow[]; series: string[]
         })}
         <line className="plot-zero" x1={px(0)} x2={px(0)} y1={M.top} y2={M.top + ih} />
       </svg>
+      </div>
     </div>
   );
 }

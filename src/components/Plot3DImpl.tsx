@@ -5,6 +5,8 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { fmtNum } from '../core/units';
+import { bitmapFigure, FigureExport, type Figure } from './figure';
+import { layoutHeight, layoutWidth, rasterScale, type FigureSettings } from './figureSize';
 import { makeScale, tickLabel } from './scale';
 import { useWidth } from './useSize';
 
@@ -38,6 +40,8 @@ export interface Plot3DProps {
   equal?: boolean;
   /** Pin the vertical range, e.g. while a surface animates. */
   zDomain?: [number, number];
+  /** Base name for exported image files; defaults to the axis labels. */
+  exportName?: string;
 }
 
 // Sequential ramp shared with the 2-D heat map: one hue, light → dark.
@@ -56,14 +60,15 @@ function extent(values: Iterable<number>): [number, number] {
 
 function textSprite(text: string, color: string, bold: boolean, viewHeight: number): THREE.Sprite {
   const c = document.createElement('canvas');
-  c.width = 384;
-  c.height = 64;
+  // Drawn large so the text stays sharp in a figure exported at print resolution.
+  c.width = 768;
+  c.height = 128;
   const ctx = c.getContext('2d')!;
-  ctx.font = `${bold ? '600 ' : ''}30px "Segoe UI", system-ui, sans-serif`;
+  ctx.font = `${bold ? '600 ' : ''}60px "Segoe UI", system-ui, sans-serif`;
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, 192, 32);
+  ctx.fillText(text, 384, 64);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false }));
@@ -98,13 +103,15 @@ interface Stage {
   frameKey: string;
   solid: Line2[];
   render: () => void;
+  /** Rebuild the box, grid and labels for a view of the given height (text is sized against it). */
+  buildFrame: (viewHeight: number) => void;
 }
 
 /**
  * Interactive 3-D chart (drag to orbit, scroll to zoom). Data axes are x, y
  * horizontal and z up; everything is scaled into a fixed box so any units fit.
  */
-export default function Plot3DImpl({ surface, lines, markers, progress, labels, height = 300, equal, zDomain }: Plot3DProps) {
+export default function Plot3DImpl({ surface, lines, markers, progress, labels, height = 300, equal, zDomain, exportName }: Plot3DProps) {
   const [wrap, width] = useWidth<HTMLDivElement>();
   const host = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
@@ -175,7 +182,7 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
     scene.add(frame, content, markerGroup);
     const render = () => renderer.render(scene, camera);
     controls.addEventListener('change', render);
-    stage.current = { renderer, scene, camera, controls, frame, content, markers: markerGroup, frameKey: '', solid: [], render };
+    stage.current = { renderer, scene, camera, controls, frame, content, markers: markerGroup, frameKey: '', solid: [], render, buildFrame: () => {} };
     return () => {
       controls.dispose();
       dispose(scene);
@@ -231,10 +238,8 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
 
     // The frame (box, grid, tick labels) is rebuilt only when the ranges change.
     // Label offsets are in scene units, so push them further out in short panels where text is relatively larger.
-    const textSize = Math.min(2, Math.max(1, 500 / height));
-    const frameKey = JSON.stringify([dx, dy, dz, half, labels, textSize]);
-    if (frameKey !== s.frameKey) {
-      s.frameKey = frameKey;
+    s.buildFrame = (viewHeight: number) => {
+      const textSize = Math.min(2, Math.max(1, 500 / viewHeight));
       dispose(s.frame);
       s.frame.clear();
       const ink = cssVar('--text-muted') || '#605e5c';
@@ -252,7 +257,7 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
       const seg: number[] = [];
       const line = (a: THREE.Vector3, b: THREE.Vector3) => seg.push(a.x, a.y, a.z, b.x, b.y, b.z);
       const label = (text: string, at: THREE.Vector3, bold = false) => {
-        const sp = textSprite(text, bold ? strong : ink, bold, height);
+        const sp = textSprite(text, bold ? strong : ink, bold, viewHeight);
         sp.position.copy(at);
         s.frame.add(sp);
       };
@@ -276,6 +281,11 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
       label(labels[0], new THREE.Vector3(0, -hz - 0.24 * textSize, hy + 0.3 * textSize), true);
       label(labels[1], new THREE.Vector3(hx + 0.5 * textSize, -hz - 0.24 * textSize, 0), true);
       label(labels[2], new THREE.Vector3(-hx - 0.3, hz + 0.16 * textSize, hy + 0.06), true);
+    };
+    const frameKey = JSON.stringify([dx, dy, dz, half, labels, height]);
+    if (frameKey !== s.frameKey) {
+      s.frameKey = frameKey;
+      s.buildFrame(height);
     }
 
     dispose(s.content);
@@ -382,9 +392,64 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
     s.render();
   });
 
+  /** The view as it stands (same angle and zoom), re-rendered at the figure's size and resolution. */
+  const figure = async (settings: FigureSettings): Promise<Figure | null> => {
+    const s = stage.current;
+    if (!s) return null;
+    // A 3-D view needs room around the box for its labels. Below about 300 layout pixels of height they collide,
+    // so a small figure is laid out larger and its text comes out smaller than asked rather than overlapping.
+    const fit = Math.max(1, 300 / layoutHeight(width, height, settings));
+    const lw = Math.round(layoutWidth(width, settings) * fit);
+    const lh = Math.round(layoutHeight(width, height, settings) * fit);
+    const limit = Math.min(8192, s.renderer.capabilities.maxTextureSize);
+    const ratio = Math.min(rasterScale(lw, width, settings), limit / Math.max(lw, lh));
+    const resize = (w: number, h: number) => s.scene.traverse((o) => {
+      const mat = (o as Line2).material as LineMaterial | undefined;
+      if (mat && mat.isLineMaterial) mat.resolution.set(w, h);
+    });
+    // Text is sized against the view, so the labels are laid out again for the figure's height, and the camera
+    // sits where it would for a panel of that height on screen.
+    const back = (lh < 300 ? 1.3 : 1) / (height < 300 ? 1.3 : 1);
+    const eye = s.camera.position.clone();
+    const before = s.renderer.getPixelRatio();
+    // A figure shows the whole path, not the moment playback happens to be at.
+    const playing = progress !== undefined;
+    try {
+      if (lh !== height) s.buildFrame(lh);
+      s.camera.position.copy(s.controls.target).add(eye.clone().sub(s.controls.target).multiplyScalar(back));
+      if (playing) {
+        for (const l of s.solid) (l.geometry as LineGeometry).instanceCount = Infinity;
+        s.markers.visible = false;
+      }
+      s.renderer.setPixelRatio(ratio);
+      s.renderer.setSize(lw, lh, false);
+      s.camera.aspect = lw / lh;
+      s.camera.updateProjectionMatrix();
+      resize(lw, lh);
+      s.render();
+      // Read the picture back before the browser clears the drawing buffer.
+      const href = s.renderer.domElement.toDataURL('image/png');
+      return { ...bitmapFigure(href, lw, lh), shownPx: width };
+    } finally {
+      if (lh !== height) s.buildFrame(height);
+      s.camera.position.copy(eye);
+      if (playing) {
+        for (const l of s.solid) (l.geometry as LineGeometry).instanceCount = Math.max(0, Math.floor(progress));
+        s.markers.visible = true;
+      }
+      s.renderer.setPixelRatio(before);
+      s.renderer.setSize(width, height);
+      s.camera.aspect = width / height;
+      s.camera.updateProjectionMatrix();
+      resize(width, height);
+      s.render();
+    }
+  };
+
   return (
     <div ref={wrap} className="plot3d" style={{ height }} onPointerMove={onHover} onPointerLeave={() => setTip(null)}>
       <div ref={host} className="plot3d-host" role="img" aria-label={`3-D chart of ${labels[2]} over ${labels[0]} and ${labels[1]}`} />
+      <FigureExport name={exportName ?? `${labels[2]} over ${labels[0]} and ${labels[1]}`} build={figure} vector={false} />
       <span className="plot3d-hint">Drag to rotate · scroll to zoom · hover to read values</span>
       {tip && (
         <div className="plot-tip" style={tip.left > width * 0.6 ? { right: width - tip.left + 14, top: tip.top + 10 } : { left: tip.left + 14, top: tip.top + 10 }}>
