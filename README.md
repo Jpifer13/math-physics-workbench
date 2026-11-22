@@ -54,6 +54,14 @@ view on the left and every edit re-runs immediately.
   family of trajectories across the range. Extrema are located, and one click
   sets the parameters to the peak. Runs execute in parallel background threads, so the
   window stays responsive and a scan can be cancelled.
+- **Uncertainty** — tick the parameters you do not know exactly and give each
+  a spread (normal or uniform). They are sampled together on a Latin
+  hypercube, so combinations of values are covered rather than one parameter
+  at a time. The result is the distribution of a measurement (mean, standard
+  deviation, 68% and 95% intervals read off the sample), a band around the
+  observable over time, and Sobol sensitivity indices with intervals: how much
+  of the variance each input explains on its own and including its
+  interactions. The sampler is seeded, so an analysis can be repeated exactly.
 - **Fit to data** — import measurements (CSV, TSV or whitespace-separated),
   pair each measured column with an observable, optionally with a column of
   error bars, and fit the parameters you choose by weighted least squares.
@@ -213,6 +221,7 @@ src/
                   Rosenbrock integrators; event location
     fastExpr.ts   Compiles model expressions to closures for the inner loop
     measure.ts    Run measurements, parameter scans, CSV export
+    sensitivity.ts  Latin hypercube sampling, uncertainty propagation, Sobol indices
     fit.ts        Data import, interpolation, Nelder–Mead, least-squares fitting
     trust.ts      Run comparison, accuracy report, expectations, provenance
     dimcheck.ts   Unit parsing and dimensional analysis of model equations

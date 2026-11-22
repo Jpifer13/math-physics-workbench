@@ -133,17 +133,17 @@ time, leaving most of the input space unexplored and missing interactions
 between parameters.
 *Evidence: peer-reviewed systematic review ([Saltelli et al.][saltelli]).*
 
-**Today.** Experiments scan one parameter, or two on a grid. That is exactly
-the practice the review criticises once a model has more than two uncertain
-inputs.
-
-**Proposal — global sensitivity and uncertainty propagation (L).**
-- *Uncertainty propagation:* give parameters a distribution (± or a range),
-  sample them together (Latin hypercube), and show the spread of each
-  observable as a band on the time series and a histogram of each measurement.
-- *Global sensitivity:* Sobol first-order and total indices (or Morris
-  screening for a cheaper first look), reported as a ranked bar chart per
-  measurement. The parallel worker pool already exists for this.
+**Status: done.** The *Uncertainty* view gives each uncertain parameter a
+distribution (normal or uniform) and samples them all together on a seeded
+Latin hypercube. It reports the spread of a measurement — mean, standard
+deviation, and 68% and 95% intervals read off the sample rather than assumed
+normal — with a histogram and a band around the observable over time, and
+Sobol first-order and total indices as a ranked bar chart with resampled 95%
+intervals. It says in words when interactions carry a large share of the
+variance, when an input could be fixed, and when the ranking is not yet
+settled. The estimators are checked against the exact indices of the Ishigami
+function. **Still open:** Morris screening as a cheaper first look for slow
+models; correlated inputs; using a fit's uncertainties as the input spread.
 
 ### 8. Fits that look fine and are not
 
@@ -243,13 +243,11 @@ free of UI code, which makes this mostly packaging.
 
 ## Suggested order for what remains
 
-Done: items 1 to 6; items 8 and 9 mostly.
+Done: items 1 to 7; items 8 and 9 mostly.
 
-1. Item 7 — global sensitivity and uncertainty propagation. The one remaining
-   place where the app still does what the research criticises.
-2. The rest of items 8 and 9 — bootstrap and tied parameters; images of heat
+1. The rest of items 8 and 9 — bootstrap and tied parameters; images of heat
    maps and 3D views, figure sizing.
-3. Items 10, 11, 12 as the user base and model sizes grow.
+2. Items 10, 11, 12 as the user base and model sizes grow.
 
 ## Sources
 

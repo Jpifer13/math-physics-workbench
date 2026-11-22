@@ -14,7 +14,7 @@ and why, and `docs/integrations.md` for the bridges to other software.
 npm install          # also downloads the Electron binary
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~120 tests
+npm test             # vitest; ~140 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
@@ -40,6 +40,7 @@ src/core/              Engine. No React, no DOM. Everything here is unit-tested.
   ode.ts                 Model types; Euler, RK4, RK45, Rosenbrock23; events
   fastExpr.ts            Compiles expressions to closures (mathjs fallback)
   measure.ts             Measurements, parameter scans, CSV
+  sensitivity.ts         Sampling, uncertainty propagation, Sobol indices
   fit.ts                 Data import, least-squares fit, profiles, runs test
   trust.ts               Run comparison, accuracy report, expectations, provenance
   dimcheck.ts            Unit parsing and dimensional checking of models
@@ -48,7 +49,7 @@ src/core/              Engine. No React, no DOM. Everything here is unit-tested.
 src/sim/               Simulations workspace (the main one)
   store.ts               zustand store for the open simulation
   Definition.tsx         Left panel: the model editor
-  RunView / ExperimentView / FitView / ToolsView   The four views
+  RunView / ExperimentView / UncertaintyView / FitView / ToolsView   The five views
   compute.ts, worker.ts  Web-worker pool for scans, fits and profiles
   models.ts              Templates
 src/flow/              Equation Flows workspace (React Flow node editor)
@@ -69,8 +70,9 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   migration where files are loaded in `documents.ts`.
 - **What re-runs a simulation.** `SimLab.tsx` memoises the run on the fields
   that affect the numbers (states, params, derived, events, solver settings).
-  Add a new numeric field to that list and to `basisOf` in `ExperimentView.tsx`
-  and `modelEssence` in `core/trust.ts`; display-only fields stay out.
+  Add a new numeric field to that list, to `basisOf` in `ExperimentView.tsx`
+  and `UncertaintyView.tsx`, and to `modelEssence` in `core/trust.ts`;
+  display-only fields stay out.
 - **Charts.** One y-axis per chart. Series colours come from the fixed
   `--series-1…8` order in `styles.css`; don't invent colours.
 - **Plain-language errors.** Messages say what happened and what to do, in the
@@ -100,6 +102,8 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   bisection; resets are simultaneous. Events that accumulate without limit stop
   the run with a message — that is intended, not a bug to "fix" by letting the
   state pass through.
+- **Electron downloads on first use.** `npm install` no longer fetches the
+  binary; the first `npm start` or `npm run dev` does.
 - **The save prompt blocks quitting.** With unsaved changes, closing the window
   shows a native Save / Don't Save / Cancel dialog. Automated runs must answer
   it or they hang.
@@ -136,18 +140,26 @@ so do look.
 ## State of the work
 
 Done and verified: the three workspaces, four solvers with events, experiments
-(1-D and 2-D), fitting with uncertainties and profiles, accuracy checks,
-expectations, provenance, unit checking, undo/redo, code export, running in
-external tools, the desktop shell, and Linux packaging.
+(1-D and 2-D), uncertainty propagation and Sobol sensitivity, fitting with
+uncertainties and profiles, accuracy checks, expectations, provenance, unit
+checking, undo/redo, code export, running in external tools, the desktop
+shell, and Linux packaging.
+
+Checked on macOS (Apple silicon) on 2026-11-22: the production build launches
+unpackaged (`npm start`), every view renders, 3D works on a real GPU, the
+Python and Octave export tests pass, and "Run and compare" works with Python.
+`CHANGELOG.md` records changes from here on; add an entry with each change.
 
 **Not verified — treat as untested:**
 - Mathematica and Julia export: generated, never run against a real install.
 - MATLAB itself: the `.m` export is verified in GNU Octave only.
-- macOS and Windows builds: only Linux packaging has been exercised.
+- macOS and Windows packaging (`npm run dist`): only Linux has been exercised.
+  The unpackaged app runs on macOS; Windows has not been run at all.
 - Code signing and notarisation: documented in the README, never run.
 - The installer workflow (`docs/build-desktop.workflow.yml`): never run.
 - The LaTeX summary: structurally tested, never compiled.
-- 3D views on a real GPU (checked with software rendering only).
+- Exporting 3D views and heat maps on a real GPU: only on-screen rendering
+  has been checked.
 
 **Waiting on the owner:**
 - Copy `docs/build-desktop.workflow.yml` to `.github/workflows/` to enable
@@ -156,11 +168,11 @@ external tools, the desktop shell, and Linux packaging.
 - Whether to add a contributor agreement before accepting outside contributions.
 
 **Next, in roadmap order** (`docs/roadmap.md` has the evidence and detail):
-1. Item 7 — uncertainty propagation and global (Sobol) sensitivity analysis.
-   The largest remaining gap; the worker pool it needs already exists.
-2. Rest of item 8 — bootstrap uncertainties; tying one fit parameter to another.
-3. Rest of item 9 — image export for heat maps and 3D views; figure size and
+1. Rest of item 8 — bootstrap uncertainties; tying one fit parameter to another.
+2. Rest of item 9 — image export for heat maps and 3D views; figure size and
    font control; PDF.
+3. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
+   inputs; feeding fitted uncertainties in as the input spread.
 4. Items 10–12 — diff-friendly files and a compare view, sub-flows, in-app
    function reference, a command-line mode.
 

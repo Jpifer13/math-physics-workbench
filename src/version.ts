@@ -4,4 +4,4 @@ declare const __APP_VERSION__: string;
 export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
 
 /** Version of the .physsim / .physflow file format. Raise it, and add a migration, when the format changes. */
-export const FILE_FORMAT = 1;
+export const FILE_FORMAT = 2;

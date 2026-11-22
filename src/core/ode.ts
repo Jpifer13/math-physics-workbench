@@ -66,6 +66,26 @@ export interface ScanConfig {
   points2?: number;
 }
 
+/** A parameter whose value is not known exactly, and how it is distributed. */
+export interface UncertainInput {
+  param: string;
+  /** 'uniform': anywhere between a and b. 'normal': mean a, standard deviation b. */
+  dist: 'uniform' | 'normal';
+  a: number;
+  b: number;
+}
+
+/** An uncertainty analysis: sample the uncertain parameters together and measure one observable on each run. */
+export interface UncertaintyConfig {
+  inputs: UncertainInput[];
+  /** Base sample size N; the analysis makes N × (inputs + 2) runs. */
+  samples: number;
+  observable: string;
+  measure: MeasureId;
+  /** Seed of the sampler, so the same design can be drawn again. */
+  seed: number;
+}
+
 /** Measured data kept with a model, and how its columns map onto the model's observables. */
 export interface ModelData {
   name: string;
@@ -109,6 +129,8 @@ export interface OdeModel {
   view3d?: [string, string, string];
   /** The saved parameter-scan experiment for this model. */
   experiment?: ScanConfig;
+  /** The saved uncertainty analysis for this model. */
+  uncertainty?: UncertaintyConfig;
   /** Expected behaviour, checked on every run. */
   expectations?: Expectation[];
   /** Imported measurements to compare and fit against. */

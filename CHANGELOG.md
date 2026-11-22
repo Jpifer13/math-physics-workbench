@@ -13,9 +13,24 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 
 ### Added
 
+- **Uncertainty view.** Give parameters a spread (normal or uniform) and
+  sample them together on a seeded Latin hypercube. Shows the distribution of
+  a measurement with 68% and 95% intervals, a band around the observable over
+  time, and Sobol first-order and total sensitivity indices with intervals.
+  The analysis is saved with the simulation and recorded in CSV exports.
+- Charts can draw shaded bands.
 - This changelog.
 
+### Changed
+
+- `.physsim` file format is now 2: simulations can carry an `uncertainty`
+  analysis. Format 1 files open unchanged; version 0.1.0 will refuse files
+  saved from now on rather than silently drop the analysis.
+
 ### Fixed
+
+- macOS: quitting with unsaved changes and answering the prompt now quits the
+  app. Before, the window closed and the app stayed running.
 
 - `package-lock.json` matches `package.json` again, so `npm install` no longer
   modifies it.

@@ -4,9 +4,10 @@
  * back to cooperative slices on the main thread.
  */
 import { fitModel, profileFit, type FitRequest, type FitResult, type Profile, type ProfileRequest } from '../core/fit';
-import { measureAt, type MeasureId } from '../core/measure';
+import type { MeasureId } from '../core/measure';
 import type { OdeModel } from '../core/ode';
-import type { WorkerRequest } from './worker';
+import { runSample } from '../core/sensitivity';
+import type { TraceRequest, WorkerRequest } from './worker';
 
 export interface Task<T> {
   promise: Promise<T>;
@@ -19,11 +20,31 @@ const lean = (model: OdeModel): OdeModel => ({ ...model, data: undefined, notes:
 const spawn = () => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 const poolSize = (jobs: number) => Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1, jobs));
 
+export interface Ensemble {
+  values: number[];
+  /** The observable over time for the runs a trace was asked for; undefined where the run failed. */
+  traces: (number[] | undefined)[];
+}
+
 /** Run the model once per set of parameter overrides and measure each run. */
 export function runJobs(
   model: OdeModel, overrides: Record<string, number>[], observable: string, measure: MeasureId, onProgress: (fraction: number) => void,
 ): Task<number[]> {
+  const task = runEnsemble(model, overrides, observable, measure, onProgress);
+  return { promise: task.promise.then((e) => e.values), cancel: task.cancel };
+}
+
+/** As runJobs, optionally keeping the observable over time for the first runs (see TraceRequest). */
+export function runEnsemble(
+  model: OdeModel, overrides: Record<string, number>[], observable: string, measure: MeasureId, onProgress: (fraction: number) => void,
+  trace?: TraceRequest,
+): Task<Ensemble> {
   const values = new Array<number>(overrides.length).fill(NaN);
+  const traces = new Array<number[] | undefined>(trace ? Math.min(trace.jobs, overrides.length) : 0).fill(undefined);
+  const keep = (index: number, r: { value: number; trace?: number[] }) => {
+    values[index] = r.value;
+    if (index < traces.length) traces[index] = r.trace;
+  };
   let cancelled = false;
   let workers: Worker[] = [];
   const stop = () => { workers.forEach((w) => w.terminate()); workers = []; };
@@ -32,17 +53,17 @@ export function runJobs(
     let slice = performance.now();
     for (let i = 0; i < overrides.length; i++) {
       if (cancelled) throw new Error('cancelled');
-      values[i] = measureAt(model, overrides[i], observable, measure);
+      keep(i, runSample(model, overrides[i], observable, measure, i < traces.length ? trace : undefined));
       if (performance.now() - slice > 40) {
         onProgress((i + 1) / overrides.length);
         await new Promise((r) => setTimeout(r));
         slice = performance.now();
       }
     }
-    return values;
+    return { values, traces };
   };
 
-  const promise = new Promise<number[]>((resolve, reject) => {
+  const promise = new Promise<Ensemble>((resolve, reject) => {
     const fallback = () => { stop(); onMain().then(resolve, reject); };
     try {
       const n = poolSize(overrides.length);
@@ -52,16 +73,16 @@ export function runJobs(
         w.onmessage = (e) => {
           const m = e.data;
           if (m.type === 'point') {
-            values[m.index] = m.value;
+            keep(m.index, m);
             onProgress(++done / overrides.length);
           } else if (m.type === 'done') {
-            if (++finished === n) { stop(); resolve(values); }
+            if (++finished === n) { stop(); resolve({ values, traces }); }
           } else if (m.type === 'error') { stop(); reject(new Error(m.message)); }
         };
         // A worker that cannot start (e.g. blocked by the platform) sends us back to the main thread once.
         w.onerror = () => { if (!failed && !cancelled) { failed = true; fallback(); } };
         const jobs = overrides.map((o, index) => ({ index, overrides: o })).filter((_, i) => i % n === k);
-        w.postMessage({ type: 'scan', model: lean(model), jobs, observable, measure } satisfies WorkerRequest);
+        w.postMessage({ type: 'scan', model: lean(model), jobs, observable, measure, trace } satisfies WorkerRequest);
       });
     } catch {
       fallback();

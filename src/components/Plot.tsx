@@ -14,6 +14,14 @@ export interface Series {
   /** Draw individual samples as dots instead of a line (measured data). */
   points?: boolean;
 }
+/** A shaded region between two curves (an uncertainty band, the bars of a histogram). */
+export interface Band {
+  x: number[];
+  lo: number[];
+  hi: number[];
+  slot?: number;
+  opacity?: number;
+}
 export interface Marker {
   x: number;
   y: number;
@@ -23,6 +31,8 @@ export interface Marker {
 
 interface Props {
   series: Series[];
+  /** Drawn beneath the series; gaps (non-finite values) split a band. */
+  bands?: Band[];
   xLabel?: string;
   yLabel?: string;
   logX?: boolean;
@@ -42,6 +52,7 @@ interface Props {
   exportName?: string;
 }
 
+const NO_BANDS: Band[] = [];
 const M = { top: 12, right: 16, bottom: 40, left: 62 };
 export const seriesColor = (slot: number) => `var(--series-${((slot - 1) % 8) + 1})`;
 
@@ -126,7 +137,7 @@ function svgToPng(svg: { text: string; width: number; height: number }, scale: n
 }
 
 export function Plot({
-  series, xLabel, yLabel, logX = false, logY = false, height = 260, equal, markers = [], cursorX,
+  series, bands = NO_BANDS, xLabel, yLabel, logX = false, logY = false, height = 260, equal, markers = [], cursorX,
   hover = true, xDomain, yDomain, empty = 'Nothing to plot yet', exportName,
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>();
@@ -135,8 +146,8 @@ export function Plot({
   const ih = Math.max(40, height - M.top - M.bottom);
 
   const { sx, sy } = useMemo(() => {
-    let xe = xDomain ?? padExtent(robustExtent(series.map((s) => s.x), logX), logX, 0);
-    let ye = yDomain ?? padExtent(robustExtent(series.map((s) => s.y), logY), logY);
+    let xe = xDomain ?? padExtent(robustExtent([...series.map((s) => s.x), ...bands.map((b) => b.x)], logX), logX, 0);
+    let ye = yDomain ?? padExtent(robustExtent([...series.map((s) => s.y), ...bands.flatMap((b) => [b.lo, b.hi])], logY), logY);
     if (equal && !logX && !logY) {
       // Grow the tighter axis so one data unit is the same length on both.
       xe = padExtent(xe, false);
@@ -150,7 +161,7 @@ export function Plot({
       sx: makeScale(xe[0], xe[1], logX, Math.max(3, Math.floor(iw / 90))),
       sy: makeScale(ye[0], ye[1], logY, Math.max(3, Math.floor(ih / 34))),
     };
-  }, [series, logX, logY, equal, iw, ih, xDomain, yDomain]);
+  }, [series, bands, logX, logY, equal, iw, ih, xDomain, yDomain]);
 
   const px = (v: number) => M.left + sx.norm(v) * iw;
   const py = (v: number) => M.top + (1 - sy.norm(v)) * ih;
@@ -179,7 +190,28 @@ export function Plot({
     [series, sx, sy, iw, ih],
   );
 
-  const hasData = series.some((s) => s.y.some(Number.isFinite));
+  const bandPaths = useMemo(
+    () =>
+      bands.map((b) => {
+        let d = '';
+        let run: [number, number, number][] = [];
+        const close = () => {
+          if (run.length > 1) d += `M${run.map(([X, , H]) => `${X.toFixed(1)},${H.toFixed(1)}`).join('L')}L${run.reverse().map(([X, L]) => `${X.toFixed(1)},${L.toFixed(1)}`).join('L')}Z`;
+          run = [];
+        };
+        for (let i = 0; i < b.x.length; i++) {
+          const X = px(b.x[i]), L = py(b.lo[i]), H = py(b.hi[i]);
+          if (Number.isFinite(X) && Number.isFinite(L) && Number.isFinite(H)) run.push([X, L, H]);
+          else close();
+        }
+        close();
+        return d;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bands, sx, sy, iw, ih],
+  );
+
+  const hasData = series.some((s) => s.y.some(Number.isFinite)) || bands.some((b) => b.hi.some(Number.isFinite));
 
   // Nearest sample to the hovered x, per series.
   const hoverPts = useMemo(() => {
@@ -275,6 +307,9 @@ export function Plot({
           <text className="plot-label" transform={`translate(13 ${M.top + ih / 2}) rotate(-90)`} textAnchor="middle">{yLabel}</text>
         )}
         <g clipPath={`url(#${clipId})`}>
+          {bandPaths.map((d, i) => (
+            <path key={`band${i}`} d={d} stroke="none" fill={seriesColor(bands[i].slot ?? i + 1)} fillOpacity={bands[i].opacity ?? 0.18} />
+          ))}
           {paths.map((d, i) => (
             <path
               key={i}

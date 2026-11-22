@@ -5,7 +5,7 @@
  */
 import { interpolate } from './fit';
 import { MEASURES, measureRun } from './measure';
-import { simulate, type Expectation, type OdeModel, type ScanConfig, type SimResult, type SolverMethod } from './ode';
+import { simulate, type Expectation, type OdeModel, type ScanConfig, type SimResult, type SolverMethod, type UncertaintyConfig } from './ode';
 
 // ------------------------------------------------------------ comparing runs
 
@@ -181,6 +181,7 @@ export interface ProvenanceOptions {
   when: string;
   run?: SimResult;
   experiment?: ScanConfig;
+  uncertainty?: UncertaintyConfig;
   /** Parameter values that differ from the model's for this output. */
   overrides?: Record<string, number>;
 }
@@ -203,6 +204,11 @@ export function provenance(model: OdeModel, o: ProvenanceOptions): string[] {
   if (o.experiment) {
     const e = o.experiment;
     lines.push(`experiment: ${e.measure} of ${e.observable} for ${e.param} from ${e.from} to ${e.to} in ${e.points} steps${e.param2 ? `, and ${e.param2} from ${e.from2} to ${e.to2} in ${e.points2} steps` : ''}`);
+  }
+  if (o.uncertainty) {
+    const u = o.uncertainty;
+    lines.push(`uncertainty analysis: ${u.measure} of ${u.observable}; Latin hypercube, base sample ${u.samples}, seed ${u.seed}`);
+    for (const i of u.inputs) lines.push(`uncertain ${i.param}: ${i.dist === 'normal' ? `normal, mean ${i.a}, standard deviation ${i.b}` : `uniform from ${i.a} to ${i.b}`}`);
   }
   return lines;
 }

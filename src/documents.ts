@@ -90,6 +90,7 @@ export function loadOpened(file: OpenedFile) {
   if (typeof format === 'number' && format > FILE_FORMAT) {
     return KINDS[active].fail(`“${baseName(file.path)}” was saved by a newer version of Physics Tooling (file format ${format}; this version reads up to ${FILE_FORMAT}). Update the app to open it.`);
   }
+  // Migrations by format. 1 → 2: simulations gained an optional `uncertainty` analysis; older files load unchanged.
   if (isModel(data)) {
     if (!confirmDiscard('sim')) return;
     const { format: _f, app: _a, ...model } = data as typeof data & { format?: number; app?: string };

@@ -494,3 +494,17 @@ ul.howto { padding-left: 18px; }
 .unit-issue { background: #fff8e6; border: 1px solid #f0d58c; border-radius: 4px; padding: 5px 8px; margin: 0 0 6px; color: #6b4e00; font-size: 11.5px; line-height: 1.4; }
 .ed-block .unit-issue { margin: 0 0 6px; }
 .profile-head { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+/* -------------------------------------------------------------- uncertainty */
+.uq-inputs td { vertical-align: middle; }
+.uq-inputs tr.off td { color: var(--text-muted); }
+.uq-name { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.uq-name code { font-weight: 600; }
+.uq-spread { display: inline-flex; align-items: center; gap: 6px; }
+.uq-spread .code { width: 92px; text-align: right; }
+.uq-design { margin-top: 12px; }
+.uq-findings { margin: 8px 0 0; }
+.uq-findings li + li { margin-top: 3px; }
+.swatch.bar { background: currentColor; margin-right: 5px; vertical-align: middle; }
+.bar-label { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; fill: var(--text-secondary); }
+.bar-whisker { stroke: var(--text); stroke-width: 1.2; fill: none; }
