@@ -16,6 +16,7 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
   const [observable, setObservable] = useState(model.timeSeries[0] ?? model.states[0]?.name ?? '');
   const [chosen, setChosen] = useState<string[]>([]);
   const [fit, setFit] = useState<FitResult | null>(null);
+  const [bounded, setBounded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const task = useRef<Task<FitResult> | null>(null);
@@ -77,7 +78,7 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
     setBusy(true);
     setMessage('');
     setFit(null);
-    const t = runFit({ model, params, observable: obs, data: dataset });
+    const t = runFit({ model, params, observable: obs, data: dataset, bounded });
     task.current = t;
     t.promise.then(
       (r) => { if (task.current === t) { setFit(r); setBusy(false); } },
@@ -152,6 +153,7 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
                 <code>{p.name}</code> <span className="muted">= {fmtNum(p.value, 5)}{p.unit ? ` ${p.unit}` : ''}</span>
               </label>
             ))}
+            <label className="muted" title="Reject values outside each parameter's configured range"><input type="checkbox" checked={bounded} onChange={(e) => setBounded(e.target.checked)} /> keep within parameter ranges</label>
           </div>
           {busy && <progress className="scan-progress" aria-label="Fitting" />}
           <Plot height={320} series={series} xLabel="time" yLabel={`${obs}${unitOf(obs) ? ` (${unitOf(obs)})` : ''}`} xDomain={dataset.t.length ? [Math.min(0, Math.min(...dataset.t)), Math.max(tDataMax, 0) * 1.02 || 1] : undefined} />
@@ -167,7 +169,7 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
           {fit && (
             <>
               <table className="table compact">
-                <thead><tr><th>Parameter</th><th className="num">Before</th><th className="num">Fitted</th><th className="num">Change</th><th>Unit</th></tr></thead>
+                <thead><tr><th>Parameter</th><th className="num">Before</th><th className="num">Fitted</th><th className="num">± 1σ</th><th className="num">Change</th><th>Unit</th></tr></thead>
                 <tbody>
                   {Object.entries(fit.values).map(([name, v]) => {
                     const p = model.params.find((q) => q.name === name);
@@ -177,6 +179,7 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
                         <td><code>{name}</code>{p?.label && <span className="muted"> {p.label}</span>}</td>
                         <td className="num">{before === undefined ? '—' : fmtNum(before, 7)}</td>
                         <td className="num"><b>{fmtNum(v, 7)}</b></td>
+                        <td className="num">{Number.isFinite(fit.errors[name]) ? fmtNum(fit.errors[name], 2) : <span className="warn" title="The data do not constrain this parameter on its own">undetermined</span>}</td>
                         <td className="num">{before === undefined || before === 0 ? '—' : `${((v / before - 1) * 100).toFixed(2)} %`}</td>
                         <td className="muted">{p?.unit ?? ''}</td>
                       </tr>
@@ -184,12 +187,32 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
                   })}
                 </tbody>
               </table>
+              {(() => {
+                const names = Object.keys(fit.values);
+                const undetermined = names.some((n) => !Number.isFinite(fit.errors[n]));
+                const pairs = names.flatMap((a, i) => names.slice(i + 1).map((b, k) => ({ a, b, r: fit.correlation[i][i + 1 + k] })));
+                const strong = pairs.filter((p) => Math.abs(p.r) > 0.95);
+                return (
+                  <>
+                    {pairs.length > 0 && !undetermined && (
+                      <p className="fit-corr">Correlations: {pairs.map((p) => `${p.a}–${p.b} ${p.r.toFixed(3)}`).join(' · ')}</p>
+                    )}
+                    {(strong.length > 0 || undetermined) && (
+                      <div className="stale-note">
+                        {undetermined
+                          ? 'These data cannot determine all of the chosen parameters independently — only a combination of them. Fix one and fit the rest.'
+                          : `${strong.map((p) => `${p.a} and ${p.b}`).join('; ')} ${strong.length > 1 ? 'are' : 'is a pair that is'} almost perfectly correlated: the data mostly fix a combination, so the individual values are poorly determined.`}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               <div className="eq-actions" style={{ justifyContent: 'flex-start', marginTop: 10 }}>
                 {applied ? <span className="good">Fitted values applied to the model.</span> : (
                   <button className="btn primary" onClick={() => patch({ params: model.params.map((p) => (p.name in fit.values ? { ...p, value: fit.values[p.name] } : p)) })}>Apply fitted values</button>
                 )}
               </div>
-              <p className="muted help">Least squares on the chosen observable by Nelder–Mead simplex, starting from the current values. It finds a local optimum: start near a plausible answer, and fit only parameters the data can distinguish.</p>
+              <p className="muted help">Least squares on the chosen observable by Nelder–Mead simplex, starting from the current values. Each parameter's configured range is surveyed first, then the best region is refined by Nelder–Mead simplex. Uncertainties are one standard deviation from the local linearisation, assuming independent errors of equal size on every point.</p>
             </>
           )}
 

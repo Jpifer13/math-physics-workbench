@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toLatex, toText } from './expr';
+import { symbolsOf, toLatex, toText } from './expr';
 import { evaluate, linspace, sweep, type Graph } from './graph';
 import { findExtrema, findRoots, integrate } from './numeric';
 import { simulate, type OdeModel } from './ode';
@@ -49,6 +49,7 @@ describe('graph engine', () => {
     expect(formatQuantity(r.q!).unit).toBe('J');
     expect(toLatex(r.ex!)).toBe('m\\,c^{2}');
     expect(toText(r.ex!)).toBe('m * c^2');
+    expect(symbolsOf(r.ex!).map((s) => [s.name, s.si, s.unit])).toEqual([['m', 1, 'kg'], ['c', 299792458, 'm/s']]);
   });
   it('reports dimension mismatches', () => {
     const g: Graph = {

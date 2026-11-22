@@ -9,7 +9,7 @@ import { Scene } from './Scene';
 import { useSim } from './store';
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
-const METHOD_NAMES = { rk45: 'RK45 adaptive', rk4: 'RK4', euler: 'Euler' };
+const METHOD_NAMES = { rk45: 'RK45 adaptive', ros23: 'Rosenbrock23 (stiff)', rk4: 'RK4', euler: 'Euler' };
 
 const default3d = (m: OdeModel): [string, string, string] => m.view3d ?? [m.phase[0], m.phase[1], 't'];
 

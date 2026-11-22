@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { desktop } from './desktop';
-import { activeKind, dirtyDocuments, loadOpened, newDocument, openDocument, saveAllDirty, saveDocument } from './documents';
+import { activeKind, dirtyDocuments, loadOpened, newDocument, openDocument, saveAllDirty, saveDocument, undoRedo } from './documents';
 import { FlowEditor } from './flow/FlowEditor';
 import { useFlow } from './flow/store';
 import { MathTools } from './mathtools/MathTools';
@@ -24,6 +24,7 @@ export function App() {
       if (action.startsWith('tab:')) return setTab(action.slice(4) as TabId);
       if (action === 'new:sim') return newDocument('sim');
       if (action === 'new:flow') return newDocument('flow');
+      if (action === 'undo' || action === 'redo') return undoRedo(action);
       if (action === 'open') return void openDocument();
       if (action === 'saveAllAndClose') return void saveAllDirty().then((ok) => ok && desktop?.closeWindow());
       // Save acts on the workspace in view; Math Tools has no document, so fall back to the simulation.

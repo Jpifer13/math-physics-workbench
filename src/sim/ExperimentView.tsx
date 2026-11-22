@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MEASURES, measureRun, scanValues, scanValues2, toCsv, type ScanConfig } from '../core/measure';
-import type { OdeModel, SimResult } from '../core/ode';
+import { simulate, type OdeModel, type SimResult } from '../core/ode';
 import { fmtNum } from '../core/units';
 import { exportCsv } from '../documents';
 import { Heatmap } from '../components/Heatmap';
@@ -53,6 +53,7 @@ export function ExperimentView({ model, run }: { model: OdeModel; run: SimResult
   const [progress, setProgress] = useState<number | null>(null);
   const [status, setStatus] = useState('');
   const [mapView, setMapView] = useState<'map' | '3d'>('map');
+  const [curveView, setCurveView] = useState<'response' | 'family'>('response');
   const task = useRef<Task<number[]> | null>(null);
   const setResult = (r: Result | null) => {
     cached = r ? { docVersion: useSim.getState().docVersion, result: r } : null;
@@ -173,6 +174,19 @@ export function ExperimentView({ model, run }: { model: OdeModel; run: SimResult
 
   const others = model.params.filter((p) => p.name !== config.param);
 
+  // A family of trajectories: the observable over time at a handful of values across the scanned range.
+  const familyOn = !!r && !r.x2 && curveView === 'family' && r.config.observable !== 't';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const family = useMemo(() => {
+    if (!familyOn || !r) return [];
+    const count = Math.min(6, r.x.length);
+    return Array.from({ length: count }, (_, k) => {
+      const value = r.x[Math.round((k * (r.x.length - 1)) / (count - 1))];
+      const one = simulate(model, { [r.config.param]: value });
+      return { name: `${r.config.param} = ${fmtNum(value, 4)}`, x: one.t, y: one.series[r.config.observable] ?? [], slot: k + 1 };
+    });
+  }, [familyOn, r, model]);
+
   return (
     <div className="experiment">
       <section className="card">
@@ -243,6 +257,12 @@ export function ExperimentView({ model, run }: { model: OdeModel; run: SimResult
           <h3>
             <span>Result: {yLabel} vs <code>{r.config.param}</code>{r.x2 && <> and <code>{r.config.param2}</code></>}</span>
             <span className="card-tools">
+              {!r.x2 && r.config.observable !== 't' && (
+                <span className="seg" role="group" aria-label="Result view">
+                  <button className={curveView === 'response' ? 'on' : ''} onClick={() => setCurveView('response')}>Response</button>
+                  <button className={curveView === 'family' ? 'on' : ''} title="The observable over time at six values across the scanned range" onClick={() => setCurveView('family')}>Trajectories</button>
+                </span>
+              )}
               {r.x2 && (
                 <span className="seg" role="group" aria-label="Map view">
                   <button className={mapView === 'map' ? 'on' : ''} onClick={() => setMapView('map')}>Map</button>
@@ -271,6 +291,8 @@ export function ExperimentView({ model, run }: { model: OdeModel; run: SimResult
                   markers={Number.isFinite(here) && rP1 && rP2 ? [{ p: [rP1.value, rP2.value, here], slot: 2 }] : []}
                 />
               )
+            ) : familyOn ? (
+              <Plot height={340} series={family} xLabel="time" yLabel={`${r.config.observable}${unitOf(r.config.observable) ? ` (${unitOf(r.config.observable)})` : ''}`} />
             ) : (
               <Plot
                 height={340}

@@ -6,7 +6,7 @@
 import { bin, fn, neg, num, sym, symbolToLatex, type Ex } from './expr';
 import { evalFormula, formulaInputs, type Val } from './formula';
 import * as Q from './qmath';
-import { fmtNumLatex, fromUnit, getConstant, getUnit, unitLatex, type Quantity } from './units';
+import { fmtNumLatex, fromUnit, getConstant, getUnit, siUnitFor, unitLatex, type Quantity } from './units';
 
 export type NodeKind = 'quantity' | 'constant' | 'op' | 'formula' | 'output';
 
@@ -132,15 +132,19 @@ export function evaluate(graph: Graph, opts: EvalOptions = {}): Map<string, Node
         const value = opts.overrides?.[node.id] ?? d.value;
         if (!getUnit(d.unit)) throw new Error(`Unknown unit "${d.unit}"`);
         if (!Number.isFinite(value)) throw new Error('Enter a number');
+        const q = fromUnit(value, d.unit);
+        const name = (d.symbol || d.label).replace(/[^A-Za-z0-9_]+/g, '_');
         return {
-          q: fromUnit(value, d.unit),
-          ex: sym(symbolToLatex(d.symbol || d.label), `${fmtNumLatex(value)}${unitLatex(d.unit)}`, (d.symbol || d.label).replace(/[^A-Za-z0-9_]+/g, '_')),
+          q,
+          ex: sym(symbolToLatex(d.symbol || d.label), `${fmtNumLatex(value)}${unitLatex(d.unit)}`, name, q.v, siUnitFor(q.d)),
         };
       }
       case 'constant': {
         const c = getConstant((node.data as ConstantData).constId);
         if (!c) throw new Error('Unknown constant');
-        return { q: c.q, ex: sym(c.latex, `${fmtNumLatex(c.q.v)}${unitLatex(c.unit)}`, c.id === 'euler' ? 'e' : c.id) };
+        if (c.id === 'pi' || c.id === 'euler') return { q: c.q, ex: sym(c.latex, fmtNumLatex(c.q.v), c.id === 'pi' ? 'pi' : 'e') };
+        // The elementary charge is written q_e in text so it cannot be mistaken for Euler's number.
+        return { q: c.q, ex: sym(c.latex, `${fmtNumLatex(c.q.v)}${unitLatex(c.unit)}`, c.id === 'e' ? 'q_e' : c.id, c.q.v, siUnitFor(c.q.d)) };
       }
       case 'op': {
         const op = getOp((node.data as OpData).op);

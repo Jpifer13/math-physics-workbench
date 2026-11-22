@@ -162,7 +162,19 @@ function buildMenu() {
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
     },
-    { role: 'editMenu' },
+    {
+      label: '&Edit',
+      submenu: [
+        // Routed through the UI: it undoes text while typing in a field, and the document otherwise.
+        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: send('undo') },
+        { label: 'Redo', accelerator: isMac ? 'Shift+Cmd+Z' : 'CmdOrCtrl+Y', click: send('redo') },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
     {
       label: '&View',
       submenu: [

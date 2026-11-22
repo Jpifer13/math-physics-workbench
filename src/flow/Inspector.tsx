@@ -43,7 +43,7 @@ export function Inspector() {
             <li><b>Compose</b> by dragging blocks onto the canvas and wiring an output port (right) to an input port (left).</li>
             <li><b>Dimensions are checked</b> on every wire; a mismatch is reported on the block that caused it.</li>
             <li>A <b>Result</b> block gives the composed equation, its value, and a sweep over any input in the panel below.</li>
-            <li><b>Copy expression</b> puts the composed formula on the clipboard, ready to paste into a simulation's equations.</li>
+            <li><b>Add to simulation</b> sends the composed formula to the open simulation as an observable, with its inputs as parameters in SI units.</li>
           </ul>
           <p className="muted">Select a block to edit it here. <kbd>Backspace</kbd> deletes the selection; scroll to zoom, drag the background to pan.</p>
         </div>

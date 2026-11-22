@@ -76,3 +76,42 @@ describe('parameter scans', () => {
     expect(toCsv([{ name: 't (s)', values: [0, 0.1] }, { name: 'x, raw', values: [1 / 3, NaN] }])).toBe('t (s),"x, raw"\n0,0.3333333333333333\n0.1,\n');
   });
 });
+
+describe('stiff solver and events', () => {
+  const stiff: OdeModel = {
+    id: 'stiff', name: 'stiff', summary: '',
+    // Relaxes to cos(t) on a timescale of 1/lambda: stiff once lambda is large.
+    states: [{ name: 'y', init: '0', deriv: '-lambda * (y - cos(t))' }],
+    params: [{ name: 'lambda', value: 1e5, min: 1, max: 1e6 }],
+    derived: [], tEnd: 4, dt: 0.01, timeSeries: ['y'], phase: ['y', 'y'],
+  };
+  it('Rosenbrock23 handles a stiff problem that defeats the explicit methods', () => {
+    const ros = simulate({ ...stiff, method: 'ros23', tol: 1e-6 });
+    expect(ros.error).toBeUndefined();
+    expect(ros.series.y.at(-1)!).toBeCloseTo(Math.cos(4), 4);
+    // Explicit RK4 at this step is far outside its stability region; RK45 needs vastly more steps.
+    expect(simulate({ ...stiff, method: 'rk4' }).error).toMatch(/diverged/);
+    const rk45 = simulate({ ...stiff, method: 'rk45', tol: 1e-6 });
+    expect(ros.stats!.steps).toBeLessThan(rk45.stats!.steps / 20);
+  });
+  it('Rosenbrock23 is accurate on a non-stiff oscillator too', () => {
+    const r = simulate({ ...sho, method: 'ros23', tol: 1e-8 });
+    expect(r.error).toBeUndefined();
+    expect(r.series.x.at(-1)!).toBeCloseTo(Math.cos(40), 3);
+  });
+  it('locates the stop condition inside a step', () => {
+    const fall: OdeModel = {
+      id: 'fall', name: 'fall', summary: '',
+      states: [{ name: 'y', init: '0', deriv: 'vy' }, { name: 'vy', init: '10', deriv: '-g' }],
+      params: [{ name: 'g', value: 9.81, min: 1, max: 20 }],
+      derived: [], tEnd: 10, dt: 0.05, stopWhen: 'y < 0', timeSeries: ['y'], phase: ['y', 'vy'],
+    };
+    const exact = 20 / 9.81;
+    for (const method of ['rk4', 'rk45', 'ros23', 'euler'] as const) {
+      const r = simulate({ ...fall, method });
+      // Euler's own truncation error moves the trajectory; the others land on the true landing time.
+      expect(Math.abs(r.t.at(-1)! - exact), method).toBeLessThan(method === 'euler' ? 0.06 : 1e-5);
+      expect(Math.abs(r.series.y.at(-1)!), method).toBeLessThan(1e-6);
+    }
+  });
+});

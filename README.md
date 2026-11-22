@@ -18,10 +18,11 @@ view on the left and every edit re-runs immediately.
   derivative expressions, named parameters with ranges and units, and
   observables (energies, invariants, anything computed from the state). The
   equations are typeset exactly as the solver will integrate them.
-- **Choose the solver** — adaptive Dormand–Prince RK45 with a relative
-  tolerance, fixed-step RK4, or Euler; plus a duration and an optional stop
-  condition (`y < 0`). Each run reports steps, rejected steps, right-hand-side
-  evaluations and wall time.
+- **Choose the solver** — adaptive Dormand–Prince RK45, a Rosenbrock 2(3)
+  method for stiff systems, fixed-step RK4, or Euler; plus a duration and an
+  optional stop condition (`y < 0`), whose moment is located inside the step
+  rather than rounded to the next one. Each run reports steps, rejected steps,
+  right-hand-side evaluations and wall time.
 - **Run** — animated picture or rotatable 3D trajectory, phase portrait, time
   series, and a measurement table (final, min, max, time average, period for
   every quantity).
@@ -31,21 +32,28 @@ view on the left and every edit re-runs immediately.
   simulation at each value, and reduce each run to a measured number (final
   value, maximum, minimum, time average, RMS, steady amplitude, period, time of
   maximum, run duration). One parameter gives a response curve; two give a
-  heat map or 3D surface. Extrema are located, and one click sets the
-  parameters to the peak. Runs execute in parallel background threads, so the
+  heat map or 3D surface. A one-parameter result can also be viewed as a
+  family of trajectories across the range. Extrema are located, and one click
+  sets the parameters to the peak. Runs execute in parallel background threads, so the
   window stays responsive and a scan can be cancelled.
 - **Fit to data** — import measurements (CSV, TSV or whitespace-separated),
   overlay them on the model, choose which parameters are free, and fit by
-  least squares. You get fitted values, RMS residual and R² before and after,
-  a residual plot, and a button to apply the result to the model.
+  least squares. Each parameter's range is surveyed before the local
+  refinement, so oscillating data do not trap the fit in a wrong minimum. You
+  get fitted values with one-sigma uncertainties, their correlations, a
+  warning when the data cannot separate two parameters, RMS residual and R²
+  before and after, a residual plot, and a button to apply the result.
+- **Undo / redo** for every edit to a simulation or a flow.
 - **Export** — any run or experiment as CSV at full double precision.
 - **Templates** — projectile with drag, pendulum, driven damped oscillator,
-  Kepler orbit, Lorenz system, charge in E and B fields, RLC circuit, coupled
-  oscillators. Each is a starting point, not a fixed demo.
+  Kepler orbit, Lorenz system, charge in E and B fields, Van der Pol
+  oscillator, RLC circuit, coupled oscillators. Each is a starting point, not a fixed demo.
 
 Simulations save as `.physsim` (plain JSON).
 
 ![Fitting spring constant and damping to measured data](docs/simulation-fit.png)
+
+![A family of trajectories across a scanned parameter](docs/simulation-trajectories.png)
 
 ![A run with a held reference for comparison](docs/simulation-reference.png)
 
@@ -63,9 +71,10 @@ wire outputs into inputs, and end with a Result block.
   length is flagged on the block that did it; results are named automatically
   (`kg·m²/s²` becomes `J`) and can be shown in any compatible unit.
 - **Equation view** — the flow is typeset symbolically, then with values
-  substituted, then the result. **Copy expression** gives the plain-text
-  formula for pasting into a simulation's equations; **Copy LaTeX** gives it
-  for a paper.
+  substituted, then the result. **Add to simulation** sends the formula to
+  the open simulation as an observable, creating parameters (in SI units) for
+  any inputs it does not already define; rates of change can then use it.
+  **Copy expression** and **Copy LaTeX** put it on the clipboard.
 - **Sweeps** — chart the output against one input (linear or log axes), or two
   inputs as a heat map or a rotatable 3D surface, and export the data as CSV.
 - Ten worked examples. Flows save as `.physflow`.
@@ -131,13 +140,15 @@ electron/
 src/
   desktop.ts    Typed view of that bridge
   documents.ts  New / Open / Save / export for both document kinds
+  history.ts    Undo / redo with coalesced edits
   core/         Framework-free engine (unit tested, no React)
     units.ts      SI dimension vectors, unit table, constants, formatting
     qmath.ts      Arithmetic on dimensional quantities, with unit errors
     expr.ts       Small symbolic expression tree → LaTeX
     formula.ts    Formula blocks: mathjs parse tree evaluated over quantities
     graph.ts      Flow graph model, evaluator, 1-D and 2-D sweeps
-    ode.ts        ODE model definition; Euler, RK4 and adaptive RK45 integrators
+    ode.ts        ODE model definition; Euler, RK4, adaptive RK45 and stiff
+                  Rosenbrock integrators; event location
     fastExpr.ts   Compiles model expressions to closures for the inner loop
     measure.ts    Run measurements, parameter scans, CSV export
     fit.ts        Data import, interpolation, Nelder–Mead, least-squares fitting
@@ -175,21 +186,21 @@ mathjs, KaTeX, zustand, Vitest.
 
 ## Known limits
 
-- Systems are explicit first-order ODEs (`dy/dt = f(t, y)`). There is no
-  implicit/stiff solver, no PDEs, no events beyond a single stop condition, and
-  no stochastic terms yet.
-- Fitting uses one measured column against one observable, with a local
-  optimiser and no parameter uncertainties. Imported data lives for the
-  session and is not stored in the `.physsim` file.
+- Systems are explicit first-order ODEs (`dy/dt = f(t, y)`). There are no
+  PDEs, no stochastic terms, and one stop condition rather than general events.
+- The stiff solver uses a finite-difference Jacobian and dense linear algebra,
+  which suits small systems (tens of variables), not large ones.
+- Fitting compares one measured column with one observable and assumes equal,
+  independent errors on every point. Imported data lives for the session and
+  is not stored in the `.physsim` file.
 - Simulation equations are plain numbers: unit labels there are annotations and
-  are not checked. Dimensional checking lives in Equation Flows.
+  are not checked. Dimensional checking lives in Equation Flows; values sent
+  from a flow arrive in SI units.
+- Installers are unsigned (see above).
 
 ## Ideas for next steps
 
-- Parameter uncertainties and correlations from a fit; fitting several
-  observables at once; bounds on fitted parameters.
-- Overlay a family of trajectories from an experiment.
-- A stiff solver and general event detection.
-- Feed an equation flow directly into a simulation as a force law.
-- Undo/redo.
-- Code signing and auto-update for the installers.
+- Fit several observables at once, with per-point error bars.
+- Multiple events with state resets (bounces, switching).
+- Save imported data alongside the simulation.
+- Code signing and auto-update for the installers (needs certificates).

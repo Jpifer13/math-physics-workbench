@@ -1,7 +1,7 @@
 /**
  * Initial-value-problem modelling: a model is a set of state variables with
- * derivative expressions, integrated by a choice of fixed-step (Euler, RK4)
- * or adaptive (Dormand–Prince RK45) methods.
+ * derivative expressions, integrated by a choice of fixed-step (Euler, RK4),
+ * adaptive (Dormand–Prince RK45) or stiff (Rosenbrock 2(3)) methods.
  */
 import { compile as mathCompile, type EvalFunction } from 'mathjs';
 import { compileFast, type Fast } from './fastExpr';
@@ -37,7 +37,7 @@ function compile(expr: string): EvalFunction {
   return code;
 }
 
-export type SolverMethod = 'rk45' | 'rk4' | 'euler';
+export type SolverMethod = 'rk45' | 'ros23' | 'rk4' | 'euler';
 
 export type MeasureId = 'final' | 'max' | 'min' | 'mean' | 'rms' | 'amplitude' | 'period' | 'tmax' | 'duration';
 
@@ -157,7 +157,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
   const y: number[] = [];
   try {
     if (!(model.tEnd > 0)) throw new Error('Duration must be positive');
-    if (method !== 'rk45' && !(model.dt > 0)) throw new Error('Time step must be positive');
+    if ((method === 'rk4' || method === 'euler') && !(model.dt > 0)) throw new Error('Time step must be positive');
     if (!names.length) throw new Error('Add at least one state variable');
     const all = order.slice(1);
     const dup = all.find((n, i) => all.indexOf(n) !== i);
@@ -220,6 +220,38 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     finish({ t: tOut, series, error: `The solution diverged at t ≈ ${t.toPrecision(3)} — try a smaller step or tolerance` });
 
   const tmp = new Array<number>(n);
+  const yPrev = new Array<number>(n);
+  const ra = new Array<number>(n), rb = new Array<number>(n), rc = new Array<number>(n), rd = new Array<number>(n);
+  /** One classical RK4 step from (t0, y0), written to `out`. Used to locate events inside a step. */
+  const rk4Step = (t0: number, y0: number[], h: number, out: number[]) => {
+    f(t0, y0, ra);
+    for (let i = 0; i < n; i++) tmp[i] = y0[i] + (h / 2) * ra[i];
+    f(t0 + h / 2, tmp, rb);
+    for (let i = 0; i < n; i++) tmp[i] = y0[i] + (h / 2) * rb[i];
+    f(t0 + h / 2, tmp, rc);
+    for (let i = 0; i < n; i++) tmp[i] = y0[i] + h * rc[i];
+    f(t0 + h, tmp, rd);
+    for (let i = 0; i < n; i++) out[i] = y0[i] + (h / 6) * (ra[i] + 2 * rb[i] + 2 * rc[i] + rd[i]);
+  };
+  /**
+   * The stop condition became true somewhere in the step from (t0, yPrev) of size h.
+   * Bisect on the step fraction to land on the moment it first holds, leaving that
+   * state in `y`; returns the event time.
+   */
+  const locateStop = (t0: number, h: number): number => {
+    if (!stop) return t0 + h;
+    const trial = new Array<number>(n);
+    let lo = 0, hi = h;
+    for (let it = 0; it < 50 && hi - lo > 1e-13 * Math.max(1, Math.abs(t0)); it++) {
+      const mid = (lo + hi) / 2;
+      rk4Step(t0, yPrev, mid, trial);
+      load(t0 + mid, trial);
+      if (stop(vals)) hi = mid;
+      else lo = mid;
+    }
+    rk4Step(t0, yPrev, hi, y);
+    return t0 + hi;
+  };
   try {
     record(0);
     if (method === 'rk45') {
@@ -255,14 +287,114 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
         }
         if (!Number.isFinite(err)) return blewUp(t);
         if (err <= 1) {
-          t += h;
-          for (let i = 0; i < n; i++) y[i] = yNew[i];
+          for (let i = 0; i < n; i++) { yPrev[i] = y[i]; y[i] = yNew[i]; }
           stats.steps++;
+          if (shouldStop(t + h)) {
+            record(locateStop(t, h));
+            break;
+          }
+          t += h;
           record(t);
-          if (shouldStop(t)) break;
         } else stats.rejected++;
         h = Math.min(hMax, h * Math.min(5, Math.max(0.2, 0.9 * Math.pow(Math.max(err, 1e-10), -0.2))));
         if (h < model.tEnd * 1e-14) return finish({ t: tOut, series, error: `Step size collapsed at t ≈ ${t.toPrecision(3)} — the equations may be singular there` });
+      }
+    } else if (method === 'ros23') {
+      // Linearly implicit Rosenbrock 2(3) pair (Shampine & Reichelt's ode23s) for stiff systems.
+      const rtol = model.tol && model.tol > 0 ? model.tol : 1e-6;
+      const atol = rtol * 1e-3;
+      const hMax = model.tEnd / 400;
+      const d = 1 / (2 + Math.SQRT2);
+      const e32 = 6 + Math.SQRT2;
+      const SQRT_EPS = 1.4901161193847656e-8;
+      const F0 = new Array<number>(n), F1 = new Array<number>(n), F2 = new Array<number>(n), col = new Array<number>(n);
+      const k1 = new Array<number>(n), k2 = new Array<number>(n), k3 = new Array<number>(n), dT = new Array<number>(n);
+      const yNew = new Array<number>(n), rhs = new Array<number>(n);
+      const J = Array.from({ length: n }, () => new Array<number>(n));
+      const W = Array.from({ length: n }, () => new Array<number>(n));
+      const perm = new Array<number>(n);
+      /** In-place LU factorisation of W with partial pivoting; false if singular. */
+      const factor = (): boolean => {
+        for (let c = 0; c < n; c++) {
+          let p = c;
+          for (let r = c + 1; r < n; r++) if (Math.abs(W[r][c]) > Math.abs(W[p][c])) p = r;
+          if (!(Math.abs(W[p][c]) > 1e-300)) return false;
+          perm[c] = p;
+          if (p !== c) { const swap = W[p]; W[p] = W[c]; W[c] = swap; }
+          for (let r = c + 1; r < n; r++) {
+            const m = (W[r][c] /= W[c][c]);
+            for (let q = c + 1; q < n; q++) W[r][q] -= m * W[c][q];
+          }
+        }
+        return true;
+      };
+      const solve = (b: number[], out: number[]) => {
+        for (let i = 0; i < n; i++) out[i] = b[i];
+        for (let c = 0; c < n; c++) {
+          const p = perm[c];
+          if (p !== c) { const swap = out[p]; out[p] = out[c]; out[c] = swap; }
+          for (let r = c + 1; r < n; r++) out[r] -= W[r][c] * out[c];
+        }
+        for (let c = n - 1; c >= 0; c--) {
+          for (let q = c + 1; q < n; q++) out[c] -= W[c][q] * out[q];
+          out[c] /= W[c][c];
+        }
+      };
+      let t = 0;
+      let h = Math.min(hMax, model.tEnd * 1e-4);
+      let stopped = false;
+      while (!stopped && t < model.tEnd * (1 - 1e-12)) {
+        h = Math.min(h, model.tEnd - t);
+        f(t, y, F0);
+        // Jacobian and time derivative by forward differences (one evaluation per state).
+        for (let j = 0; j < n; j++) {
+          const del = SQRT_EPS * Math.max(Math.abs(y[j]), 1e-6);
+          for (let i = 0; i < n; i++) tmp[i] = y[i];
+          tmp[j] += del;
+          f(t, tmp, col);
+          for (let i = 0; i < n; i++) J[i][j] = (col[i] - F0[i]) / del;
+        }
+        const delT = SQRT_EPS * Math.max(Math.abs(t), h, 1e-6);
+        f(t + delT, y, col);
+        for (let i = 0; i < n; i++) dT[i] = (col[i] - F0[i]) / delT;
+
+        for (;;) {
+          if (stats.steps + stats.rejected > MAX_STEPS) {
+            return finish({ t: tOut, series, error: 'Too many steps — loosen the tolerance or shorten the run' });
+          }
+          if (h < model.tEnd * 1e-14) return finish({ t: tOut, series, error: `Step size collapsed at t ≈ ${t.toPrecision(3)} — the equations may be singular there` });
+          for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) W[i][j] = (i === j ? 1 : 0) - h * d * J[i][j];
+          if (!factor()) { h /= 2; stats.rejected++; continue; }
+          for (let i = 0; i < n; i++) rhs[i] = F0[i] + h * d * dT[i];
+          solve(rhs, k1);
+          for (let i = 0; i < n; i++) tmp[i] = y[i] + 0.5 * h * k1[i];
+          f(t + 0.5 * h, tmp, F1);
+          for (let i = 0; i < n; i++) rhs[i] = F1[i] - k1[i];
+          solve(rhs, k2);
+          for (let i = 0; i < n; i++) { k2[i] += k1[i]; yNew[i] = y[i] + h * k2[i]; }
+          f(t + h, yNew, F2);
+          for (let i = 0; i < n; i++) rhs[i] = F2[i] - e32 * (k2[i] - F1[i]) - 2 * (k1[i] - F0[i]) + h * d * dT[i];
+          solve(rhs, k3);
+          let err = 0;
+          for (let i = 0; i < n; i++) {
+            const scale = atol + rtol * Math.max(Math.abs(y[i]), Math.abs(yNew[i]));
+            err = Math.max(err, Math.abs((h / 6) * (k1[i] - 2 * k2[i] + k3[i])) / scale);
+          }
+          if (!Number.isFinite(err)) { h *= 0.25; stats.rejected++; continue; }
+          const grow = Math.min(5, Math.max(0.2, 0.9 * Math.pow(Math.max(err, 1e-10), -1 / 3)));
+          if (err > 1) { h *= grow; stats.rejected++; continue; }
+          for (let i = 0; i < n; i++) { yPrev[i] = y[i]; y[i] = yNew[i]; }
+          stats.steps++;
+          if (shouldStop(t + h)) {
+            record(locateStop(t, h));
+            stopped = true;
+          } else {
+            t += h;
+            record(t);
+          }
+          h = Math.min(hMax, h * grow);
+          break;
+        }
       }
     } else {
       const h = model.dt;
@@ -273,6 +405,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
       const stride = Math.max(1, Math.ceil(steps / MAX_SAMPLES));
       for (let s = 1; s <= steps; s++) {
         const t = (s - 1) * h;
+        for (let i = 0; i < n; i++) yPrev[i] = y[i];
         f(t, y, k1);
         if (method === 'euler') {
           for (let i = 0; i < n; i++) y[i] += h * k1[i];
@@ -287,9 +420,11 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
         }
         stats.steps++;
         if (y.some((v) => !Number.isFinite(v))) return blewUp(s * h);
-        const stopped = shouldStop(s * h);
-        if (s % stride === 0 || s === steps || stopped) record(s * h);
-        if (stopped) break;
+        if (shouldStop(s * h)) {
+          record(locateStop(t, h));
+          break;
+        }
+        if (s % stride === 0 || s === steps) record(s * h);
       }
     }
   } catch (err) {

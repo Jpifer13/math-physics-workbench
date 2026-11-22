@@ -10,7 +10,10 @@ import { Plot } from '../components/Plot';
 import { Plot3D } from '../components/Plot3D';
 import { Tex } from '../components/Tex';
 import { NumberField, ResultsContext } from './PhysNode';
+import { useNav } from '../nav';
+import { useSim } from '../sim/store';
 import { useFlow } from './store';
+import { addFlowToSimulation } from './toSimulation';
 import { toGraph } from './types';
 
 const axisLabel = (name: string, unit: string) => (unit ? `${name} (${unit})` : name);
@@ -22,6 +25,7 @@ export function ModelPanel() {
   const setModel = useFlow((s) => s.setModel);
   const results = useContext(ResultsContext);
   const [status, setStatus] = useState('');
+  const [sent, setSent] = useState('');
 
   // The engine only cares about wiring and settings, not where blocks sit.
   const graphKey = JSON.stringify([nodes.map((n) => [n.id, n.data]), edges.map((e) => [e.source, e.target, e.targetHandle])]);
@@ -124,7 +128,15 @@ export function ModelPanel() {
             <div className="eq-actions">
               <button className="btn small" title="Plain-text expression, ready to paste into a simulation equation or a Formula block" onClick={() => void copy(toText(result.ex!), 'Expression')}>Copy expression</button>
               <button className="btn small" onClick={() => void copy(`${symTex} = ${toLatex(result.ex!)}`, 'LaTeX')}>Copy LaTeX</button>
+              <button
+                className="btn small" title="Add this formula to the open simulation as an observable; its inputs become parameters in SI units"
+                onClick={() => {
+                  const tr = addFlowToSimulation(result.ex!, outCfg?.symbol || outCfg?.label || 'result', formatQuantity(result.q!).unit);
+                  setSent(`${tr.replaced ? 'Updated' : 'Added'} observable “${tr.observable}” in “${useSim.getState().model.name}”${tr.added.length ? `, with new parameter${tr.added.length > 1 ? 's' : ''} ${tr.added.join(', ')}` : ''}${tr.reused.length ? `; uses its existing ${tr.reused.join(', ')}` : ''}.`);
+                }}
+              >Add to simulation</button>
             </div>
+            {sent && <div className="sent-note">{sent} <button className="link" onClick={() => useNav.getState().setTab('sim')}>Open simulation</button></div>}
             <div className="muted center">
               {status ? `${status} · ` : ''}Quantity: {dimName(result.q.d)}{display.unit !== formatQuantity(result.q).unit ? ` · ${quantityText(result.q)} in SI` : ''}
             </div>

@@ -2,9 +2,10 @@ import { parse } from 'mathjs';
 import { useMemo, useState } from 'react';
 import { symbolToLatex } from '../core/expr';
 import type { OdeModel, SolverMethod } from '../core/ode';
-import { confirmDiscard, newDocument, openDocument, saveDocument } from '../documents';
+import { confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
 import { NumberField } from '../components/NumberField';
 import { Tex } from '../components/Tex';
+import { UndoRedo } from '../components/UndoRedo';
 import { MODELS } from './models';
 import { markSimSaved, useSim } from './store';
 
@@ -44,6 +45,7 @@ function equationsTex(model: OdeModel): string[] {
 
 const METHODS: { id: SolverMethod; label: string; hint: string }[] = [
   { id: 'rk45', label: 'RK45 adaptive', hint: 'Dormand–Prince 5(4): the step size adapts to keep the local error under the tolerance' },
+  { id: 'ros23', label: 'Rosenbrock23 adaptive (stiff)', hint: 'Linearly implicit 2(3) pair with a numerical Jacobian — for stiff systems where explicit methods need tiny steps' },
   { id: 'rk4', label: 'RK4 fixed step', hint: 'Classic 4th-order Runge–Kutta with a constant step' },
   { id: 'euler', label: 'Euler fixed step', hint: 'First order — mainly useful for seeing how integration error behaves' },
 ];
@@ -73,6 +75,7 @@ export function Definition() {
         <div className="def-file">
           <span className="file-status" title={filePath ?? 'Not saved to a file yet'}>{fileName ?? 'Unsaved'}{dirty ? ' • edited' : ''}</span>
           <span className="spacer" />
+          <UndoRedo kind="sim" />
           <button className="btn small" onClick={() => newDocument('sim')} title="Start a blank simulation">New</button>
           <button className="btn small" onClick={() => void openDocument()}>Open</button>
           <button className="btn small" onClick={() => void saveDocument('sim')}>Save</button>
@@ -84,6 +87,7 @@ export function Definition() {
             if (m && confirmDiscard('sim')) {
               useSim.getState().load(m);
               markSimSaved(null);
+              historyFor('sim').reset();
             }
           }}
         >
@@ -177,10 +181,10 @@ export function Definition() {
           <div className="ed-row">
             <span className="muted">duration</span>
             <NumberField className="code" value={model.tEnd} onChange={(tEnd) => patch({ tEnd })} label="Duration" />
-            {method === 'rk45' ? (
+            {method === 'rk45' || method === 'ros23' ? (
               <>
                 <span className="muted">tolerance</span>
-                <NumberField className="code" value={model.tol ?? 1e-8} onChange={(tol) => patch({ tol })} label="Relative tolerance" />
+                <NumberField className="code" value={model.tol ?? (method === 'ros23' ? 1e-6 : 1e-8)} onChange={(tol) => patch({ tol })} label="Relative tolerance" />
               </>
             ) : (
               <>

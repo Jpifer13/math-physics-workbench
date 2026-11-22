@@ -4,13 +4,13 @@
  */
 
 export type Ex =
-  | { t: 'sym'; latex: string; val?: string; name?: string }
+  | { t: 'sym'; latex: string; val?: string; name?: string; /** Value in SI units and its unit label, when known. */ si?: number; unit?: string }
   | { t: 'num'; v: number }
   | { t: 'bin'; op: '+' | '-' | '*' | '/' | '^'; a: Ex; b: Ex }
   | { t: 'neg'; a: Ex }
   | { t: 'fn'; name: string; args: Ex[] };
 
-export const sym = (latex: string, val?: string, name?: string): Ex => ({ t: 'sym', latex, val, name });
+export const sym = (latex: string, val?: string, name?: string, si?: number, unit?: string): Ex => ({ t: 'sym', latex, val, name, si, unit });
 export const num = (v: number): Ex => ({ t: 'num', v });
 export const bin = (op: '+' | '-' | '*' | '/' | '^', a: Ex, b: Ex): Ex => ({ t: 'bin', op, a, b });
 export const fn = (name: string, ...args: Ex[]): Ex => ({ t: 'fn', name, args });
@@ -128,4 +128,17 @@ export function toText(e: Ex): string {
       if (e.op === '*') return `${wrap(e.a, 2)} * ${wrap(e.b, 2)}`;
       return `${wrap(e.a, 2)} / ${wrap(e.b, 3)}`;
   }
+}
+
+/** Every distinct named symbol in an expression, in order of first appearance. */
+export function symbolsOf(e: Ex): Extract<Ex, { t: 'sym' }>[] {
+  const out: Extract<Ex, { t: 'sym' }>[] = [];
+  const walk = (x: Ex) => {
+    if (x.t === 'sym') { if (x.name && !out.some((s) => s.name === x.name)) out.push(x); }
+    else if (x.t === 'bin') { walk(x.a); walk(x.b); }
+    else if (x.t === 'neg') walk(x.a);
+    else if (x.t === 'fn') x.args.forEach(walk);
+  };
+  walk(e);
+  return out;
 }

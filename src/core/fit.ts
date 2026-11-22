@@ -123,10 +123,22 @@ export interface FitRequest {
   params: string[];
   observable: string;
   data: Dataset;
+  /** Keep each fitted parameter inside its declared [min, max] range. */
+  bounded?: boolean;
+  /**
+   * Survey each parameter's declared range before refining (default true).
+   * Oscillating data give the misfit many local minima, so a purely local
+   * search from a poor guess can lock onto the wrong one.
+   */
+  survey?: boolean;
 }
 
 export interface FitResult {
   values: Record<string, number>;
+  /** One-standard-deviation uncertainties from the local linearisation (NaN if undetermined). */
+  errors: Record<string, number>;
+  /** Correlation matrix of the fitted parameters, in the order of `values`. */
+  correlation: number[][];
   before: Residuals;
   after: Residuals;
   evals: number;
@@ -134,7 +146,28 @@ export interface FitResult {
 }
 
 /** Least-squares fit: adjust the chosen parameters so the observable best matches the data. */
-export function fitModel({ model, params, observable, data }: FitRequest): FitResult {
+/** Invert a small symmetric matrix by Gauss–Jordan elimination; null if (numerically) singular. */
+export function invert(a: number[][]): number[][] | null {
+  const n = a.length;
+  const m = a.map((row, i) => [...row, ...row.map((_, j) => (i === j ? 1 : 0))]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(m[r][c]) > Math.abs(m[p][c])) p = r;
+    const scale = Math.max(...a.map((row) => Math.max(...row.map(Math.abs))), 1e-300);
+    if (!(Math.abs(m[p][c]) > 1e-12 * scale)) return null;
+    [m[c], m[p]] = [m[p], m[c]];
+    const piv = m[c][c];
+    for (let q = 0; q < 2 * n; q++) m[c][q] /= piv;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const k = m[r][c];
+      if (k !== 0) for (let q = 0; q < 2 * n; q++) m[r][q] -= k * m[c][q];
+    }
+  }
+  return m.map((row) => row.slice(n));
+}
+
+export function fitModel({ model, params, observable, data, bounded, survey = true }: FitRequest): FitResult {
   const chosen = model.params.filter((p) => params.includes(p.name));
   if (!chosen.length) throw new Error('Choose at least one parameter to fit');
   if (data.t.length < chosen.length + 1) throw new Error('Not enough data points for that many parameters');
@@ -147,17 +180,69 @@ export function fitModel({ model, params, observable, data }: FitRequest): FitRe
   if (!before.used) throw new Error(`The run produced no values of "${observable}" at the measured times`);
   const scale = chosen.map((p) => (p.value !== 0 ? Math.abs(p.value) * 0.1 : (p.max - p.min) * 0.05 || 0.1));
   // Penalise runs that fail to cover some of the data so the optimiser stays in the valid region.
-  const cost = (x: number[]) => { const r = evaluate(x); return r.used < before.used ? Infinity : r.rms; };
-  let best = nelderMead(cost, x0, scale, 150 + 120 * chosen.length);
+  const outside = (x: number[]) => !!bounded && x.some((v, i) => v < chosen[i].min || v > chosen[i].max);
+  const cost = (x: number[]) => { if (outside(x)) return Infinity; const r = evaluate(x); return r.used < before.used ? Infinity : r.rms; };
+  // Stage 1 — survey: a grid over the declared ranges (one or two parameters), or
+  // line scans along each axis in turn (more), to choose the basin to refine in.
+  let start = x0;
+  let startCost = cost(x0);
+  let surveyEvals = 0;
+  const tryPoint = (x: number[]) => {
+    surveyEvals++;
+    const c = cost(x);
+    if (c < startCost) { startCost = c; start = x; }
+  };
+  const ranged = chosen.every((c) => c.max > c.min);
+  if (survey && ranged) {
+    const grid = (c: (typeof chosen)[number], n: number) => Array.from({ length: n }, (_, i) => c.min + ((c.max - c.min) * (i + 0.5)) / n);
+    if (chosen.length === 1) {
+      for (const a of grid(chosen[0], 60)) tryPoint([a]);
+    } else if (chosen.length === 2) {
+      for (const a of grid(chosen[0], 16)) for (const b of grid(chosen[1], 16)) tryPoint([a, b]);
+    } else {
+      for (let pass = 0; pass < 2; pass++) {
+        chosen.forEach((c, j) => { for (const a of grid(c, 30)) tryPoint(start.map((v, k) => (k === j ? a : v))); });
+      }
+    }
+  }
+  // Stage 2 — refine. After a survey the simplex starts at the grid spacing, not at 10% of the value.
+  const refineScale = start === x0 ? scale : chosen.map((c, i) => Math.min(scale[i] || Infinity, (c.max - c.min) / 40) || scale[i]);
+  let best = nelderMead(cost, start, refineScale, 150 + 120 * chosen.length);
   // One restart from the solution guards against a prematurely collapsed simplex.
   const again = nelderMead(cost, best.x, best.x.map((v, i) => (v !== 0 ? Math.abs(v) * 0.03 : scale[i] * 0.3)), 100 + 60 * chosen.length);
-  const evals = best.evals + again.evals;
+  const evals = best.evals + again.evals + surveyEvals;
   if (again.fx <= best.fx) best = again;
+  const after = evaluate(best.x);
+
+  // Uncertainties from the linearised problem: cov = s² (JᵀJ)⁻¹ with J the residual Jacobian.
+  const p = chosen.length;
+  const mask = after.residuals.map(Number.isFinite);
+  const N = mask.filter(Boolean).length;
+  const errors: Record<string, number> = Object.fromEntries(chosen.map((c) => [c.name, NaN]));
+  let correlation: number[][] = chosen.map((_, i) => chosen.map((__, j) => (i === j ? 1 : NaN)));
+  if (N > p) {
+    const Jc = chosen.map((_, j) => {
+      const step = 1e-4 * Math.max(Math.abs(best.x[j]), scale[j] * 0.1, 1e-12);
+      const up = evaluate(best.x.map((v, k) => (k === j ? v + step : v))).residuals;
+      const dn = evaluate(best.x.map((v, k) => (k === j ? v - step : v))).residuals;
+      return after.residuals.map((_, i) => (mask[i] && Number.isFinite(up[i]) && Number.isFinite(dn[i]) ? (up[i] - dn[i]) / (2 * step) : 0));
+    });
+    const JTJ = chosen.map((_, i) => chosen.map((__, j) => Jc[i].reduce((sum, v, k) => sum + v * Jc[j][k], 0)));
+    const inv = invert(JTJ);
+    const s2 = (after.rms * after.rms * N) / (N - p);
+    if (inv && inv.every((row, i) => row[i] > 0)) {
+      chosen.forEach((c, i) => { errors[c.name] = Math.sqrt(s2 * inv[i][i]); });
+      correlation = inv.map((row, i) => row.map((v, j) => v / Math.sqrt(inv[i][i] * inv[j][j])));
+    }
+  }
+
   return {
-    values: Object.fromEntries(chosen.map((p, i) => [p.name, best.x[i]])),
+    values: Object.fromEntries(chosen.map((c, i) => [c.name, best.x[i]])),
+    errors,
+    correlation,
     before,
-    after: evaluate(best.x),
-    evals,
+    after,
+    evals: evals + 2 * p + 1,
     converged: best.converged,
   };
 }

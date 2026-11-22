@@ -149,6 +149,24 @@ export const MODELS: OdeModel[] = [
     notes: 'With E = 0 the speed is constant (the magnetic force does no work). Period scales as 1/B; with E > 0 the guiding centre drifts along E × B.',
   },
   {
+    id: 'vdp',
+    name: 'Van der Pol oscillator',
+    summary: 'A self-sustained oscillator with nonlinear damping. Small mu gives near-sinusoidal motion; large mu gives relaxation oscillations and a stiff system.',
+    states: [
+      { name: 'x', init: 'x0', deriv: 'v' },
+      { name: 'v', init: '0', deriv: 'mu * (1 - x^2) * v - x' },
+    ],
+    params: [
+      { name: 'mu', label: 'Nonlinearity', value: 5, min: 0, max: 50, step: 0.1 },
+      { name: 'x0', label: 'Initial displacement', value: 0.5, min: -3, max: 3 },
+    ],
+    derived: [],
+    tEnd: 60, dt: 0.002, method: 'ros23', tol: 1e-6,
+    experiment: { param: 'mu', from: 0.1, to: 20, points: 41, observable: 'x', measure: 'period' },
+    timeSeries: ['x'], phase: ['x', 'v'],
+    notes: 'Every trajectory converges to the same limit cycle. For large mu the period approaches (3 − 2 ln 2)·mu ≈ 1.614 mu; the fast jumps make explicit solvers take very small steps, which is what the Rosenbrock method is for.',
+  },
+  {
     id: 'rlc',
     name: 'RLC circuit',
     summary: 'A charged capacitor discharging through a resistor and inductor. It is the same equation as the damped spring: L ↔ mass, R ↔ friction, 1/C ↔ stiffness.',

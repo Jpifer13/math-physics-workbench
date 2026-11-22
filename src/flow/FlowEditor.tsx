@@ -1,9 +1,10 @@
 import {
-  Background, BackgroundVariant, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
+  Background, BackgroundVariant, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { confirmDiscard, newDocument, openDocument, saveDocument } from '../documents';
+import { confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
+import { UndoRedo } from '../components/UndoRedo';
 import { evaluate } from '../core/graph';
 import type { PaletteItem } from './catalog';
 import { EXAMPLES } from './examples';
@@ -38,10 +39,13 @@ function Editor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const results = useMemo(() => evaluate(toGraph(s.nodes, s.edges)), [graphKey]);
 
+  // Re-fit the view once a newly loaded flow's blocks have been measured.
+  const measured = useNodesInitialized();
   useEffect(() => {
-    const t = setTimeout(() => rf.fitView({ padding: '8%', maxZoom: 1, duration: 200 }), 180);
+    if (!measured) return;
+    const t = setTimeout(() => rf.fitView({ padding: '8%', maxZoom: 1, duration: 200 }), 60);
     return () => clearTimeout(t);
-  }, [s.docVersion, rf, showModel]);
+  }, [s.docVersion, measured, rf, showModel]);
 
   const addAtCentre = useCallback((item: PaletteItem) => {
     const r = wrap.current?.getBoundingClientRect();
@@ -81,6 +85,7 @@ function Editor() {
                   if (ex && confirmDiscard('flow')) {
                     s.load(ex);
                     markSaved(null);
+                    historyFor('flow').reset();
                   }
                 }}
                 aria-label="Load an example flow"
@@ -88,6 +93,7 @@ function Editor() {
                 <option value="" disabled>Examples…</option>
                 {EXAMPLES.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
             </select>
+            <UndoRedo kind="flow" />
             <button className="btn" onClick={() => newDocument('flow')}>New</button>
             <button className="btn" onClick={() => void openDocument()}>Open</button>
             <button className="btn" onClick={() => void saveDocument('flow')} title={fileName ? `Save to ${s.filePath}` : 'Save this flow to a file'}>Save</button>

@@ -4,6 +4,7 @@
  */
 import { desktop, type DocExt, type OpenedFile } from './desktop';
 import { currentDoc, markSaved, useFlow } from './flow/store';
+import { createHistory, type History } from './history';
 import type { FlowDoc } from './flow/types';
 import { useNav } from './nav';
 import { blankModel, isModel, markSimSaved, useSim } from './sim/store';
@@ -33,6 +34,37 @@ const KINDS = {
   },
 };
 
+// Undo history per document. Selection and file state are deliberately not part of it.
+const histories: Record<DocKind, History> = {
+  sim: createHistory({
+    id: 'sim',
+    get: () => useSim.getState().model,
+    set: (model) => useSim.setState({ model }),
+    subscribe: (fn) => { useSim.subscribe((s, prev) => { if (s.model !== prev.model) fn(); }); },
+  }),
+  flow: createHistory({
+    id: 'flow',
+    get: currentDoc,
+    set: (doc) => useFlow.setState({ name: doc.name, description: doc.description, nodes: doc.nodes, edges: doc.edges, model: doc.model, selectedId: null }),
+    subscribe: (fn) => { useFlow.subscribe((s, prev) => { if (s.nodes !== prev.nodes || s.edges !== prev.edges || s.name !== prev.name || s.description !== prev.description || s.model !== prev.model) fn(); }); },
+  }),
+};
+export const historyFor = (kind: DocKind): History => histories[kind];
+
+/**
+ * Undo or redo. While typing in a field the field's own undo applies (as users
+ * expect); otherwise the command acts on the document in view.
+ */
+export function undoRedo(direction: 'undo' | 'redo') {
+  const el = document.activeElement;
+  if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && /^(text|search|)$/.test(el.type))) {
+    document.execCommand(direction);
+    return;
+  }
+  const kind = activeKind();
+  if (kind) histories[kind][direction]();
+}
+
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -55,11 +87,13 @@ export function loadOpened(file: OpenedFile) {
     if (!confirmDiscard('sim')) return;
     useSim.getState().load(data);
     markSimSaved(file.path);
+    histories.sim.reset();
     useNav.getState().setTab('sim');
   } else if (data && Array.isArray((data as FlowDoc).nodes) && Array.isArray((data as FlowDoc).edges)) {
     if (!confirmDiscard('flow')) return;
     useFlow.getState().load(data as FlowDoc);
     markSaved(file.path);
+    histories.flow.reset();
     useNav.getState().setTab('flow');
   } else {
     KINDS[active].fail(`“${baseName(file.path)}” is not a Physics Tooling document.`);
@@ -71,6 +105,7 @@ export function newDocument(kind: DocKind) {
   if (kind === 'sim') useSim.getState().load(blankModel());
   else useFlow.getState().clear();
   KINDS[kind].mark(null);
+  histories[kind].reset();
   useNav.getState().setTab(kind);
 }
 

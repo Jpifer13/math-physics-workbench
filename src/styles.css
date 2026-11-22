@@ -442,3 +442,7 @@ ul.howto { padding-left: 18px; }
 .fit-params label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .fit-stats { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 8px 0; font-variant-numeric: tabular-nums; }
 .good { color: var(--tone-output); font-weight: 600; }
+.fit-corr { font-size: 12px; color: var(--text-secondary); margin: 8px 0 4px; font-variant-numeric: tabular-nums; }
+.btn.undo { width: 26px; padding: 0; font-size: 14px; }
+.sent-note { background: #f1faf1; border: 1px solid #bfe3bf; border-radius: 4px; padding: 6px 10px; margin: 6px 0; font-size: 12px; line-height: 1.45; }
+.eq-actions { flex-wrap: wrap; }
