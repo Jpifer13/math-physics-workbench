@@ -27,17 +27,25 @@ view on the left and every edit re-runs immediately.
   every quantity).
 - **Compare** — hold a run as a dashed reference, change the model, and see
   both on every chart.
-- **Experiment** — vary one parameter across a range, run the simulation at
-  each value, and reduce each run to a measured number (final value, maximum,
-  minimum, time average, RMS, steady amplitude, period, time of maximum, run
-  duration). The result is a response curve with its extrema located, a data
-  table, and one click to set the parameter to the peak.
+- **Experiment** — vary one parameter (or two) across a range, run the
+  simulation at each value, and reduce each run to a measured number (final
+  value, maximum, minimum, time average, RMS, steady amplitude, period, time of
+  maximum, run duration). One parameter gives a response curve; two give a
+  heat map or 3D surface. Extrema are located, and one click sets the
+  parameters to the peak. Runs execute in parallel background threads, so the
+  window stays responsive and a scan can be cancelled.
+- **Fit to data** — import measurements (CSV, TSV or whitespace-separated),
+  overlay them on the model, choose which parameters are free, and fit by
+  least squares. You get fitted values, RMS residual and R² before and after,
+  a residual plot, and a button to apply the result to the model.
 - **Export** — any run or experiment as CSV at full double precision.
 - **Templates** — projectile with drag, pendulum, driven damped oscillator,
   Kepler orbit, Lorenz system, charge in E and B fields, RLC circuit, coupled
   oscillators. Each is a starting point, not a fixed demo.
 
 Simulations save as `.physsim` (plain JSON).
+
+![Fitting spring constant and damping to measured data](docs/simulation-fit.png)
 
 ![A run with a held reference for comparison](docs/simulation-reference.png)
 
@@ -130,13 +138,15 @@ src/
     formula.ts    Formula blocks: mathjs parse tree evaluated over quantities
     graph.ts      Flow graph model, evaluator, 1-D and 2-D sweeps
     ode.ts        ODE model definition; Euler, RK4 and adaptive RK45 integrators
+    fastExpr.ts   Compiles model expressions to closures for the inner loop
     measure.ts    Run measurements, parameter scans, CSV export
+    fit.ts        Data import, interpolation, Nelder–Mead, least-squares fitting
     numeric.ts    Derivative, Simpson integration, root and extremum finding
   components/   Plot (SVG line chart), Heatmap, Plot3D (three.js, lazy-loaded),
                 KaTeX wrapper, number field
   flow/         Node editor: store, block cards, palette, inspector, model panel
-  sim/          Simulations: definition panel, run view, experiment view,
-                templates, animated scene
+  sim/          Simulations: definition panel; run, experiment and fit views;
+                worker pool for background computation; templates
   mathtools/    Grapher, 3D surface plotter, vector field, units panel
 ```
 
@@ -168,16 +178,18 @@ mathjs, KaTeX, zustand, Vitest.
 - Systems are explicit first-order ODEs (`dy/dt = f(t, y)`). There is no
   implicit/stiff solver, no PDEs, no events beyond a single stop condition, and
   no stochastic terms yet.
-- Experiments scan one parameter at a time and run on the UI thread in slices
-  (cancellable, but a heavy model will feel slow).
+- Fitting uses one measured column against one observable, with a local
+  optimiser and no parameter uncertainties. Imported data lives for the
+  session and is not stored in the `.physsim` file.
 - Simulation equations are plain numbers: unit labels there are annotations and
   are not checked. Dimensional checking lives in Equation Flows.
 
 ## Ideas for next steps
 
-- Two-parameter experiments (maps) and overlaying a family of trajectories.
-- Fit a model's parameters to imported experimental data (CSV).
-- A stiff solver, event detection, and running experiments in a worker thread.
+- Parameter uncertainties and correlations from a fit; fitting several
+  observables at once; bounds on fitted parameters.
+- Overlay a family of trajectories from an experiment.
+- A stiff solver and general event detection.
 - Feed an equation flow directly into a simulation as a force law.
-- Undo/redo, and a prompt to save when closing with unsaved edits.
+- Undo/redo.
 - Code signing and auto-update for the installers.

@@ -3,7 +3,8 @@
  * derivative expressions, integrated by a choice of fixed-step (Euler, RK4)
  * or adaptive (Dormand–Prince RK45) methods.
  */
-import { compile, type EvalFunction } from 'mathjs';
+import { compile as mathCompile, type EvalFunction } from 'mathjs';
+import { compileFast, type Fast } from './fastExpr';
 
 export interface StateVar { name: string; init: string; deriv: string; unit?: string }
 export interface Param { name: string; value: number; min: number; max: number; step?: number; unit?: string; label?: string }
@@ -24,6 +25,18 @@ export interface Scene {
   anchors?: [number, number, string][];
 }
 
+// Parsing dominates short runs, and experiments re-run the same model hundreds of times.
+const compiled = new Map<string, EvalFunction>();
+function compile(expr: string): EvalFunction {
+  let code = compiled.get(expr);
+  if (!code) {
+    if (compiled.size > 500) compiled.clear();
+    code = mathCompile(expr);
+    compiled.set(expr, code);
+  }
+  return code;
+}
+
 export type SolverMethod = 'rk45' | 'rk4' | 'euler';
 
 export type MeasureId = 'final' | 'max' | 'min' | 'mean' | 'rms' | 'amplitude' | 'period' | 'tmax' | 'duration';
@@ -36,6 +49,11 @@ export interface ScanConfig {
   points: number;
   observable: string;
   measure: MeasureId;
+  /** Optional second parameter: the experiment becomes a 2-D map. */
+  param2?: string;
+  from2?: number;
+  to2?: number;
+  points2?: number;
 }
 
 export interface OdeModel {
@@ -105,8 +123,6 @@ const DP_B4 = [5179 / 57600, 0, 7571 / 16695, 393 / 640, -92097 / 339200, 187 / 
 export function simulate(model: OdeModel, paramValues?: Record<string, number>): SimResult {
   const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const method: SolverMethod = model.method ?? 'rk4';
-  const scope: Record<string, number> = { t: 0 };
-  for (const p of model.params) scope[p.name] = paramValues?.[p.name] ?? p.value;
   const names = model.states.map((s) => s.name);
   const stats: SimStats = { method, steps: 0, rejected: 0, evals: 0, ms: 0 };
   const finish = (r: SimResult): SimResult => {
@@ -114,39 +130,75 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     return { ...r, stats };
   };
 
-  let derivs: EvalFunction[];
-  let derived: EvalFunction[];
-  let stop: EvalFunction | undefined;
+  // Every named quantity lives in one flat array: [t, parameters…, states…, observables…].
+  const order = ['t', ...model.params.map((p) => p.name), ...names, ...model.derived.map((d) => d.name)];
+  const slot: Record<string, number> = {};
+  order.forEach((name, i) => { slot[name] = i; });
+  const vals = new Float64Array(order.length);
+  model.params.forEach((p) => { vals[slot[p.name]] = paramValues?.[p.name] ?? p.value; });
+  const stateAt = names.length ? slot[names[0]] : 0;
+  const derivedAt = stateAt + names.length;
+
+  /** Compile an expression: the fast path when possible, mathjs otherwise. */
+  const prepare = (expr: string): Fast => {
+    const fast = compileFast(expr, slot);
+    if (fast) return fast;
+    const code = compile(expr);
+    const scope: Record<string, number> = {};
+    return (v) => {
+      for (let i = 0; i < order.length; i++) scope[order[i]] = v[i];
+      return Number(code.evaluate(scope));
+    };
+  };
+
+  let derivs: Fast[];
+  let derived: Fast[];
+  let stop: Fast | undefined;
   const y: number[] = [];
   try {
     if (!(model.tEnd > 0)) throw new Error('Duration must be positive');
     if (method !== 'rk45' && !(model.dt > 0)) throw new Error('Time step must be positive');
     if (!names.length) throw new Error('Add at least one state variable');
-    const all = [...names, ...model.derived.map((d) => d.name), ...model.params.map((p) => p.name)];
+    const all = order.slice(1);
     const dup = all.find((n, i) => all.indexOf(n) !== i);
     if (dup) throw new Error(`The name "${dup}" is used more than once`);
     const bad = all.find((n) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(n) || n === 't');
     if (bad !== undefined) throw new Error(`"${bad}" is not a valid name (use letters, digits and _; "t" is reserved for time)`);
-    // Initial conditions may reference parameters and earlier states.
-    for (const s of model.states) {
-      const v = Number(compile(s.init).evaluate(scope));
+    // Initial conditions may reference parameters and earlier states (mathjs reports unknown symbols clearly).
+    const initScope: Record<string, number> = { t: 0 };
+    for (const p of model.params) initScope[p.name] = vals[slot[p.name]];
+    model.states.forEach((s, i) => {
+      const v = Number(compile(s.init).evaluate(initScope));
       if (!Number.isFinite(v)) throw new Error(`Initial value of ${s.name} is not a number`);
-      scope[s.name] = v;
+      initScope[s.name] = v;
+      vals[stateAt + i] = v;
       y.push(v);
-    }
-    derivs = model.states.map((s) => compile(s.deriv));
-    derived = model.derived.map((d) => compile(d.expr));
-    stop = model.stopWhen ? compile(model.stopWhen) : undefined;
+    });
+    // Evaluate each expression once through mathjs so mistakes (unknown symbols, syntax) are reported up front.
+    const check = (expr: string, known: Record<string, number>) => { compile(expr).evaluate({ ...known }); };
+    const known: Record<string, number> = { ...initScope };
+    model.derived.forEach((d) => { check(d.expr, known); known[d.name] = 0; });
+    model.states.forEach((s) => check(s.deriv, known));
+    if (model.stopWhen) check(model.stopWhen, known);
+    derivs = model.states.map((s) => prepare(s.deriv));
+    derived = model.derived.map((d) => prepare(d.expr));
+    stop = model.stopWhen ? prepare(model.stopWhen) : undefined;
   } catch (err) {
     return finish({ t: [], series: {}, error: err instanceof Error ? err.message : String(err) });
   }
 
   const n = names.length;
+  const nd = derived.length;
+  /** Load a state into the value array, refreshing observables so rates may depend on them. */
+  const load = (t: number, state: number[]) => {
+    vals[0] = t;
+    for (let i = 0; i < n; i++) vals[stateAt + i] = state[i];
+    for (let i = 0; i < nd; i++) vals[derivedAt + i] = derived[i](vals);
+  };
   const f = (t: number, state: number[], out: number[]) => {
     stats.evals++;
-    scope.t = t;
-    for (let i = 0; i < n; i++) scope[names[i]] = state[i];
-    for (let i = 0; i < n; i++) out[i] = Number(derivs[i].evaluate(scope));
+    load(t, state);
+    for (let i = 0; i < n; i++) out[i] = derivs[i](vals);
   };
 
   const tOut: number[] = [];
@@ -154,21 +206,15 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
   for (const name of names) series[name] = [];
   for (const d of model.derived) series[d.name] = [];
   const record = (t: number) => {
-    scope.t = t;
-    for (let i = 0; i < n; i++) scope[names[i]] = y[i];
+    load(t, y);
     tOut.push(t);
     for (let i = 0; i < n; i++) series[names[i]].push(y[i]);
-    model.derived.forEach((d, i) => {
-      const v = Number(derived[i].evaluate(scope));
-      scope[d.name] = v;
-      series[d.name].push(v);
-    });
+    for (let i = 0; i < nd; i++) series[model.derived[i].name].push(vals[derivedAt + i]);
   };
   const shouldStop = (t: number) => {
     if (!stop) return false;
-    scope.t = t;
-    for (let i = 0; i < n; i++) scope[names[i]] = y[i];
-    return Boolean(stop.evaluate(scope));
+    load(t, y);
+    return Boolean(stop(vals));
   };
   const blewUp = (t: number): SimResult =>
     finish({ t: tOut, series, error: `The solution diverged at t ≈ ${t.toPrecision(3)} — try a smaller step or tolerance` });

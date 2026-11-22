@@ -3,7 +3,7 @@ export interface OpenedFile {
   path: string;
   text: string;
 }
-export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'tab:sim' | 'tab:flow' | 'tab:math';
+export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'saveAllAndClose' | 'tab:sim' | 'tab:flow' | 'tab:math';
 export type DocExt = 'physsim' | 'physflow';
 
 export interface DesktopApi {
@@ -11,6 +11,9 @@ export interface DesktopApi {
   openDocument(): Promise<OpenedFile | null>;
   saveDocument(text: string, filePath: string | null, suggestedName: string, ext: DocExt): Promise<string | null>;
   exportFile(text: string, suggestedName: string, ext: 'csv'): Promise<string | null>;
+  importData(): Promise<OpenedFile | null>;
+  setDirty(names: string[]): void;
+  closeWindow(): void;
   onMenu(cb: (action: MenuAction) => void): () => void;
   onFileOpened(cb: (file: OpenedFile) => void): () => void;
   ready(): void;

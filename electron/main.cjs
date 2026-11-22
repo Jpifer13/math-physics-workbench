@@ -96,6 +96,19 @@ ipcMain.handle('doc:save', async (_e, text, filePath, suggestedName, ext) => {
   return target;
 });
 
+// Measured data to compare a model against. Read-only: the path is never written to.
+ipcMain.handle('import:open', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Import data',
+    properties: ['openFile'],
+    filters: [{ name: 'Data tables', extensions: ['csv', 'tsv', 'txt', 'dat'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const stat = fs.statSync(r.filePaths[0]);
+  if (stat.size > 50 * 1024 * 1024) throw new Error('That file is larger than 50 MB');
+  return { path: r.filePaths[0], text: fs.readFileSync(r.filePaths[0], 'utf8') };
+});
+
 // Data exports always go through a Save dialog; they are never tied to an open document.
 ipcMain.handle('export:save', async (_e, text, suggestedName, ext) => {
   if (typeof text !== 'string') throw new Error('Nothing to export');
@@ -108,6 +121,15 @@ ipcMain.handle('export:save', async (_e, text, suggestedName, ext) => {
   if (r.canceled || !r.filePath) return null;
   await fs.promises.writeFile(r.filePath, text, 'utf8');
   return r.filePath;
+});
+
+// Unsaved-changes guard: the UI reports which documents are dirty; closing asks first.
+let dirtyDocs = [];
+let closeConfirmed = false;
+ipcMain.on('doc:dirty', (_e, names) => { dirtyDocs = Array.isArray(names) ? names.map(String) : []; });
+ipcMain.on('app:close', () => {
+  closeConfirmed = true;
+  win?.close();
 });
 
 ipcMain.on('app:ready', () => {
@@ -199,8 +221,28 @@ function createWindow() {
   });
   if (state.maximized) win.maximize();
   win.once('ready-to-show', () => win.show());
-  win.on('close', saveWindowState);
-  win.on('closed', () => { win = null; });
+  closeConfirmed = false;
+  win.on('close', (e) => {
+    if (!closeConfirmed && dirtyDocs.length) {
+      e.preventDefault();
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        buttons: ['Save', "Don't Save", 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        message: `Save changes to ${dirtyDocs.join(' and ')}?`,
+        detail: "Your changes will be lost if you don't save them.",
+      });
+      if (choice === 0) win.webContents.send('menu', 'saveAllAndClose');
+      else if (choice === 1) {
+        closeConfirmed = true;
+        win.close();
+      }
+      return;
+    }
+    saveWindowState();
+  });
+  win.on('closed', () => { win = null; dirtyDocs = []; });
 
   // The window only ever shows the app itself; links open in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {

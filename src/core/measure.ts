@@ -94,6 +94,19 @@ export function measureRun(run: SimResult, observable: string, id: MeasureId): n
   return measure(run.t, y, id);
 }
 
+/** Run the model with some parameters overridden and reduce the run to one number. */
+export function measureAt(model: OdeModel, overrides: Record<string, number>, observable: string, id: MeasureId): number {
+  return measureRun(simulate(model, overrides), observable, id);
+}
+
+/** Values of the second parameter of a 2-D experiment. */
+export const scanValues2 = (c: ScanConfig): number[] => {
+  const n = Math.max(2, Math.min(120, Math.round(c.points2 ?? 21)));
+  const a = c.from2 ?? 0;
+  const b = c.to2 ?? 1;
+  return Array.from({ length: n }, (_, i) => a + ((b - a) * i) / (n - 1));
+};
+
 /** One point of a scan: run the model with one parameter overridden and measure it. */
 export function scanPoint(model: OdeModel, c: ScanConfig, value: number): number {
   return measureRun(simulate(model, { [c.param]: value }), c.observable, c.measure);

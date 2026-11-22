@@ -10,6 +10,8 @@ export interface Series {
   /** Palette slot 1–8; defaults to the series' position. */
   slot?: number;
   dashed?: boolean;
+  /** Draw individual samples as dots instead of a line (measured data). */
+  points?: boolean;
 }
 export interface Marker {
   x: number;
@@ -73,6 +75,7 @@ export function Plot({
   const paths = useMemo(
     () =>
       series.map((s) => {
+        if (s.points) return '';
         let d = '';
         let pen = false;
         const n = Math.min(s.x.length, s.y.length);
@@ -118,7 +121,7 @@ export function Plot({
       {series.length > 1 && (
         <div className="plot-legend">
           {series.map((s, i) => (
-            <span key={s.name + i}><span className={`swatch line${s.dashed ? ' dashed' : ''}`} style={{ color: seriesColor(s.slot ?? i + 1) }} />{s.name}</span>
+            <span key={s.name + i}><span className={`swatch ${s.points ? 'dot' : `line${s.dashed ? ' dashed' : ''}`}`} style={{ color: seriesColor(s.slot ?? i + 1) }} />{s.name}</span>
           ))}
         </div>
       )}
@@ -174,6 +177,17 @@ export function Plot({
               strokeDasharray={series[i].dashed ? '6 4' : undefined}
             />
           ))}
+          {series.map((s, i) => {
+            if (!s.points) return null;
+            // Thin very large data sets so the chart stays responsive.
+            const stride = Math.max(1, Math.ceil(s.x.length / 1500));
+            const dots = [];
+            for (let k = 0; k < s.x.length; k += stride) {
+              const X = px(s.x[k]), Y = py(s.y[k]);
+              if (Number.isFinite(X) && Number.isFinite(Y)) dots.push(<circle key={k} cx={X} cy={Y} r={2.6} />);
+            }
+            return <g key={`pts${i}`} fill={seriesColor(s.slot ?? i + 1)} fillOpacity={0.75}>{dots}</g>;
+          })}
           {cursorX !== undefined && Number.isFinite(px(cursorX)) && (
             <line className="plot-cursor" x1={px(cursorX)} x2={px(cursorX)} y1={M.top} y2={M.top + ih} />
           )}

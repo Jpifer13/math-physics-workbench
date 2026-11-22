@@ -136,3 +136,34 @@ export const activeKind = (): DocKind | null => {
   const tab = useNav.getState().tab;
   return tab === 'math' ? null : tab;
 };
+
+/** Pick a data table to import. Resolves to its name and text, or null if cancelled. */
+export async function importData(): Promise<OpenedFile | null> {
+  if (desktop) return desktop.importData();
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,.tsv,.txt,.dat,text/csv,text/plain';
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      resolve(f ? { path: f.name, text: await f.text() } : null);
+    };
+    input.click();
+  });
+}
+
+/** Names of the documents with unsaved changes, for the close prompt. */
+export const dirtyDocuments = (): { kind: DocKind; name: string }[] =>
+  (['sim', 'flow'] as const)
+    .filter((k) => KINDS[k].state().dirty && KINDS[k].hasContent())
+    .map((kind) => ({ kind, name: `“${baseName(KINDS[kind].state().filePath ?? '') || KINDS[kind].name() || `untitled ${KINDS[kind].noun}`}”` }));
+
+/** Save every dirty document; true when nothing is left unsaved (i.e. no dialog was cancelled). */
+export async function saveAllDirty(): Promise<boolean> {
+  for (const { kind } of dirtyDocuments()) {
+    useNav.getState().setTab(kind);
+    await saveDocument(kind);
+    if (KINDS[kind].state().dirty) return false;
+  }
+  return true;
+}

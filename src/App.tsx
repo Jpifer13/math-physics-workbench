@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { desktop } from './desktop';
-import { activeKind, loadOpened, newDocument, openDocument, saveDocument } from './documents';
+import { activeKind, dirtyDocuments, loadOpened, newDocument, openDocument, saveAllDirty, saveDocument } from './documents';
 import { FlowEditor } from './flow/FlowEditor';
 import { useFlow } from './flow/store';
 import { MathTools } from './mathtools/MathTools';
@@ -25,6 +25,7 @@ export function App() {
       if (action === 'new:sim') return newDocument('sim');
       if (action === 'new:flow') return newDocument('flow');
       if (action === 'open') return void openDocument();
+      if (action === 'saveAllAndClose') return void saveAllDirty().then((ok) => ok && desktop?.closeWindow());
       // Save acts on the workspace in view; Math Tools has no document, so fall back to the simulation.
       const kind = activeKind() ?? 'sim';
       void saveDocument(kind, action === 'saveAs');
@@ -33,6 +34,13 @@ export function App() {
     desktop.ready();
     return () => { offMenu(); offFile(); };
   }, [setTab]);
+
+  // Keep the shell informed of unsaved work so closing the window can ask first.
+  const simDirty = useSim((s) => s.dirty);
+  const flowDirty = useFlow((s) => s.dirty);
+  useEffect(() => {
+    desktop?.setDirty(dirtyDocuments().map((d) => d.name));
+  }, [simDirty, flowDirty]);
 
   // Window title follows the document in view, as in any document app.
   const simTitle = useSim((s) => `${s.dirty ? '• ' : ''}${fileName(s.filePath) ?? (s.model.name || 'Untitled simulation')}`);

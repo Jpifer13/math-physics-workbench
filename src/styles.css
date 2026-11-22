@@ -433,3 +433,12 @@ input.big { width: 180px; text-align: right; }
 
 .eq-actions { display: flex; justify-content: center; gap: 6px; margin: 6px 0 4px; }
 ul.howto { padding-left: 18px; }
+.design-break { flex-basis: 100%; height: 0; }
+.design .code.narrow { width: 62px; }
+.design .runs { align-self: center; padding-top: 16px; }
+.card.stale .result-plot { opacity: 0.45; }
+.swatch.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: middle; }
+.fit-params { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 0 10px; }
+.fit-params label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.fit-stats { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 8px 0; font-variant-numeric: tabular-nums; }
+.good { color: var(--tone-output); font-weight: 600; }
