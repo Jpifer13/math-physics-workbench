@@ -3,7 +3,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { newFlow, openFlow, saveFlow } from './files';
+import { confirmDiscard, newDocument, openDocument, saveDocument } from '../documents';
 import { evaluate } from '../core/graph';
 import type { PaletteItem } from './catalog';
 import { EXAMPLES } from './examples';
@@ -78,7 +78,7 @@ function Editor() {
                 value=""
                 onChange={(e) => {
                   const ex = EXAMPLES.find((x) => x.name === e.target.value);
-                  if (ex && (!s.dirty || confirm('This flow has unsaved changes. Discard them?'))) {
+                  if (ex && confirmDiscard('flow')) {
                     s.load(ex);
                     markSaved(null);
                   }
@@ -88,10 +88,10 @@ function Editor() {
                 <option value="" disabled>Examples…</option>
                 {EXAMPLES.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
             </select>
-            <button className="btn" onClick={newFlow}>New</button>
-            <button className="btn" onClick={() => void openFlow()}>Open</button>
-            <button className="btn" onClick={() => void saveFlow()} title={fileName ? `Save to ${s.filePath}` : 'Save this flow to a file'}>Save</button>
-            <button className="btn" onClick={() => void saveFlow(true)}>Save As</button>
+            <button className="btn" onClick={() => newDocument('flow')}>New</button>
+            <button className="btn" onClick={() => void openDocument()}>Open</button>
+            <button className="btn" onClick={() => void saveDocument('flow')} title={fileName ? `Save to ${s.filePath}` : 'Save this flow to a file'}>Save</button>
+            <button className="btn" onClick={() => void saveDocument('flow', true)}>Save As</button>
             <button className="btn" onClick={() => setShowModel(!showModel)} aria-pressed={showModel}>{showModel ? 'Hide model' : 'Show model'}</button>
           </div>
           {s.notice && <div className="notice" role="alert">{s.notice} <button className="link" onClick={() => useFlow.setState({ notice: '' })}>Dismiss</button></div>}

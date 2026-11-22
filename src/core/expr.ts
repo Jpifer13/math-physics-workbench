@@ -4,13 +4,13 @@
  */
 
 export type Ex =
-  | { t: 'sym'; latex: string; val?: string }
+  | { t: 'sym'; latex: string; val?: string; name?: string }
   | { t: 'num'; v: number }
   | { t: 'bin'; op: '+' | '-' | '*' | '/' | '^'; a: Ex; b: Ex }
   | { t: 'neg'; a: Ex }
   | { t: 'fn'; name: string; args: Ex[] };
 
-export const sym = (latex: string, val?: string): Ex => ({ t: 'sym', latex, val });
+export const sym = (latex: string, val?: string, name?: string): Ex => ({ t: 'sym', latex, val, name });
 export const num = (v: number): Ex => ({ t: 'num', v });
 export const bin = (op: '+' | '-' | '*' | '/' | '^', a: Ex, b: Ex): Ex => ({ t: 'bin', op, a, b });
 export const fn = (name: string, ...args: Ex[]): Ex => ({ t: 'fn', name, args });
@@ -104,4 +104,28 @@ function startsNumeric(e: Ex): boolean {
   if (e.t === 'num') return true;
   if (e.t === 'bin' && (e.op === '*' || e.op === '^')) return startsNumeric(e.a);
   return false;
+}
+
+/**
+ * Plain-text form of an expression (e.g. `m * c^2`), in the syntax accepted by
+ * formula blocks and simulation equations.
+ */
+export function toText(e: Ex): string {
+  const wrap = (x: Ex, minPrec: number) => (precOf(x) < minPrec ? `(${toText(x)})` : toText(x));
+  switch (e.t) {
+    case 'sym':
+      return e.name ?? e.latex;
+    case 'num':
+      return String(e.v);
+    case 'neg':
+      return `-${wrap(e.a, 3)}`;
+    case 'fn':
+      return `${e.name === 'ln' ? 'log' : e.name}(${e.args.map(toText).join(', ')})`;
+    case 'bin':
+      if (e.op === '^') return `${wrap(e.a, 5)}^${wrap(e.b, 5)}`;
+      if (e.op === '+') return `${wrap(e.a, 1)} + ${wrap(e.b, 1)}`;
+      if (e.op === '-') return `${wrap(e.a, 1)} - ${wrap(e.b, 2)}`;
+      if (e.op === '*') return `${wrap(e.a, 2)} * ${wrap(e.b, 2)}`;
+      return `${wrap(e.a, 2)} / ${wrap(e.b, 3)}`;
+  }
 }

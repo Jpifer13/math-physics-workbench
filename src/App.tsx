@@ -1,50 +1,45 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { desktop } from './desktop';
-import { loadOpened, newFlow, openFlow, saveFlow } from './flow/files';
+import { activeKind, loadOpened, newDocument, openDocument, saveDocument } from './documents';
 import { FlowEditor } from './flow/FlowEditor';
 import { useFlow } from './flow/store';
 import { MathTools } from './mathtools/MathTools';
+import { TABS, useNav, type TabId } from './nav';
 import { SimLab } from './sim/SimLab';
+import { useSim } from './sim/store';
 
-const TABS = [
-  { id: 'flow', name: 'Flow Builder', hint: 'Wire blocks into equations' },
-  { id: 'sim', name: 'Simulation Lab', hint: 'Watch systems evolve in time' },
-  { id: 'math', name: 'Math Tools', hint: 'Graphs, fields, units' },
-] as const;
-type TabId = (typeof TABS)[number]['id'];
+const fileName = (p: string | null) => p?.split(/[\\/]/).pop();
 
 export function App() {
-  const [tab, setTab] = useState<TabId>(() => {
-    const h = location.hash.slice(1);
-    return TABS.some((t) => t.id === h) ? (h as TabId) : 'flow';
-  });
+  const tab = useNav((s) => s.tab);
+  const setTab = useNav((s) => s.setTab);
   useEffect(() => {
     history.replaceState(null, '', `#${tab}`);
   }, [tab]);
 
-  // Native menu commands and files opened from the operating system.
+  // Native menu commands and documents opened from the operating system.
   useEffect(() => {
     if (!desktop) return;
     const offMenu = desktop.onMenu((action) => {
       if (action.startsWith('tab:')) return setTab(action.slice(4) as TabId);
-      setTab('flow');
-      if (action === 'new') newFlow();
-      else if (action === 'open') void openFlow();
-      else if (action === 'save') void saveFlow();
-      else if (action === 'saveAs') void saveFlow(true);
+      if (action === 'new:sim') return newDocument('sim');
+      if (action === 'new:flow') return newDocument('flow');
+      if (action === 'open') return void openDocument();
+      // Save acts on the workspace in view; Math Tools has no document, so fall back to the simulation.
+      const kind = activeKind() ?? 'sim';
+      void saveDocument(kind, action === 'saveAs');
     });
-    const offFile = desktop.onFileOpened((file) => {
-      setTab('flow');
-      loadOpened(file);
-    });
+    const offFile = desktop.onFileOpened(loadOpened);
     desktop.ready();
     return () => { offMenu(); offFile(); };
-  }, []);
+  }, [setTab]);
 
-  // Window title follows the open flow, as in any document app.
-  const title = useFlow((s) => `${s.dirty ? '• ' : ''}${s.filePath?.split(/[\\/]/).pop() ?? (s.name || 'Untitled flow')} — Physics Tooling`);
+  // Window title follows the document in view, as in any document app.
+  const simTitle = useSim((s) => `${s.dirty ? '• ' : ''}${fileName(s.filePath) ?? (s.model.name || 'Untitled simulation')}`);
+  const flowTitle = useFlow((s) => `${s.dirty ? '• ' : ''}${fileName(s.filePath) ?? (s.name || 'Untitled flow')}`);
+  const title = tab === 'sim' ? simTitle : tab === 'flow' ? flowTitle : 'Math Tools';
   useEffect(() => {
-    document.title = title;
+    document.title = `${title} — Physics Tooling`;
   }, [title]);
 
   return (
@@ -58,8 +53,8 @@ export function App() {
         </nav>
       </header>
       <div className="workspace">
-        {tab === 'flow' && <FlowEditor />}
         {tab === 'sim' && <SimLab />}
+        {tab === 'flow' && <FlowEditor />}
         {tab === 'math' && <MathTools />}
       </div>
     </div>

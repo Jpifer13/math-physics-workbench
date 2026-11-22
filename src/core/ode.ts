@@ -1,6 +1,7 @@
 /**
  * Initial-value-problem modelling: a model is a set of state variables with
- * derivative expressions, integrated with classic 4th-order Runge–Kutta.
+ * derivative expressions, integrated by a choice of fixed-step (Euler, RK4)
+ * or adaptive (Dormand–Prince RK45) methods.
  */
 import { compile, type EvalFunction } from 'mathjs';
 
@@ -23,17 +24,34 @@ export interface Scene {
   anchors?: [number, number, string][];
 }
 
+export type SolverMethod = 'rk45' | 'rk4' | 'euler';
+
+export type MeasureId = 'final' | 'max' | 'min' | 'mean' | 'rms' | 'amplitude' | 'period' | 'tmax' | 'duration';
+
+/** A virtual experiment: vary one parameter and measure one observable on each run. */
+export interface ScanConfig {
+  param: string;
+  from: number;
+  to: number;
+  points: number;
+  observable: string;
+  measure: MeasureId;
+}
+
 export interface OdeModel {
   id: string;
   name: string;
   summary: string;
-  /** LaTeX lines describing the governing equations. */
-  equations: string[];
   states: StateVar[];
   params: Param[];
   derived: Derived[];
   tEnd: number;
+  /** Step size for the fixed-step methods. */
   dt: number;
+  /** Integration method (default RK4). */
+  method?: SolverMethod;
+  /** Relative error tolerance for the adaptive method (default 1e-8). */
+  tol?: number;
   /** Stop the run early when this expression becomes true (e.g. "y < 0"). */
   stopWhen?: string;
   scene?: Scene;
@@ -42,30 +60,73 @@ export interface OdeModel {
   phase: [string, string];
   /** Default axes of the 3-D trajectory view (state/derived names or "t"). */
   view3d?: [string, string, string];
-  explore?: string;
+  /** The saved parameter-scan experiment for this model. */
+  experiment?: ScanConfig;
+  /** Free-form lab notes kept with the model. */
+  notes?: string;
+}
+
+export interface SimStats {
+  method: SolverMethod;
+  /** Accepted integration steps. */
+  steps: number;
+  /** Steps rejected by the adaptive error control. */
+  rejected: number;
+  /** Right-hand-side evaluations. */
+  evals: number;
+  /** Wall-clock time in milliseconds. */
+  ms: number;
 }
 
 export interface SimResult {
   t: number[];
   series: Record<string, number[]>;
   error?: string;
+  stats?: SimStats;
 }
 
-const MAX_STEPS = 200_000;
+const MAX_STEPS = 400_000;
+const MAX_SAMPLES = 6000;
+
+// Dormand–Prince 5(4) coefficients.
+const DP_C = [0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1, 1];
+const DP_A = [
+  [],
+  [1 / 5],
+  [3 / 40, 9 / 40],
+  [44 / 45, -56 / 15, 32 / 9],
+  [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729],
+  [9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656],
+  [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84],
+];
+const DP_B5 = [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0];
+const DP_B4 = [5179 / 57600, 0, 7571 / 16695, 393 / 640, -92097 / 339200, 187 / 2100, 1 / 40];
 
 export function simulate(model: OdeModel, paramValues?: Record<string, number>): SimResult {
+  const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const method: SolverMethod = model.method ?? 'rk4';
   const scope: Record<string, number> = { t: 0 };
   for (const p of model.params) scope[p.name] = paramValues?.[p.name] ?? p.value;
   const names = model.states.map((s) => s.name);
-  const empty: SimResult = { t: [], series: {} };
+  const stats: SimStats = { method, steps: 0, rejected: 0, evals: 0, ms: 0 };
+  const finish = (r: SimResult): SimResult => {
+    stats.ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started;
+    return { ...r, stats };
+  };
 
   let derivs: EvalFunction[];
   let derived: EvalFunction[];
   let stop: EvalFunction | undefined;
   const y: number[] = [];
   try {
-    if (!(model.dt > 0) || !(model.tEnd > 0)) throw new Error('Time step and duration must be positive');
-    if (new Set(names).size !== names.length) throw new Error('State variable names must be unique');
+    if (!(model.tEnd > 0)) throw new Error('Duration must be positive');
+    if (method !== 'rk45' && !(model.dt > 0)) throw new Error('Time step must be positive');
+    if (!names.length) throw new Error('Add at least one state variable');
+    const all = [...names, ...model.derived.map((d) => d.name), ...model.params.map((p) => p.name)];
+    const dup = all.find((n, i) => all.indexOf(n) !== i);
+    if (dup) throw new Error(`The name "${dup}" is used more than once`);
+    const bad = all.find((n) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(n) || n === 't');
+    if (bad !== undefined) throw new Error(`"${bad}" is not a valid name (use letters, digits and _; "t" is reserved for time)`);
     // Initial conditions may reference parameters and earlier states.
     for (const s of model.states) {
       const v = Number(compile(s.init).evaluate(scope));
@@ -77,24 +138,21 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     derived = model.derived.map((d) => compile(d.expr));
     stop = model.stopWhen ? compile(model.stopWhen) : undefined;
   } catch (err) {
-    return { ...empty, error: err instanceof Error ? err.message : String(err) };
+    return finish({ t: [], series: {}, error: err instanceof Error ? err.message : String(err) });
   }
 
   const n = names.length;
   const f = (t: number, state: number[], out: number[]) => {
+    stats.evals++;
     scope.t = t;
     for (let i = 0; i < n; i++) scope[names[i]] = state[i];
     for (let i = 0; i < n; i++) out[i] = Number(derivs[i].evaluate(scope));
   };
 
-  const steps = Math.min(MAX_STEPS, Math.ceil(model.tEnd / model.dt));
-  // Keep at most ~4000 recorded samples so charts stay fast.
-  const stride = Math.max(1, Math.ceil(steps / 4000));
   const tOut: number[] = [];
   const series: Record<string, number[]> = {};
   for (const name of names) series[name] = [];
   for (const d of model.derived) series[d.name] = [];
-
   const record = (t: number) => {
     scope.t = t;
     for (let i = 0; i < n; i++) scope[names[i]] = y[i];
@@ -106,39 +164,114 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
       series[d.name].push(v);
     });
   };
+  const shouldStop = (t: number) => {
+    if (!stop) return false;
+    scope.t = t;
+    for (let i = 0; i < n; i++) scope[names[i]] = y[i];
+    return Boolean(stop.evaluate(scope));
+  };
+  const blewUp = (t: number): SimResult =>
+    finish({ t: tOut, series, error: `The solution diverged at t ≈ ${t.toPrecision(3)} — try a smaller step or tolerance` });
 
-  const k1 = new Array<number>(n), k2 = new Array<number>(n), k3 = new Array<number>(n), k4 = new Array<number>(n);
   const tmp = new Array<number>(n);
-  const h = model.dt;
   try {
     record(0);
-    for (let s = 1; s <= steps; s++) {
-      const t = (s - 1) * h;
-      f(t, y, k1);
-      for (let i = 0; i < n; i++) tmp[i] = y[i] + (h / 2) * k1[i];
-      f(t + h / 2, tmp, k2);
-      for (let i = 0; i < n; i++) tmp[i] = y[i] + (h / 2) * k2[i];
-      f(t + h / 2, tmp, k3);
-      for (let i = 0; i < n; i++) tmp[i] = y[i] + h * k3[i];
-      f(t + h, tmp, k4);
-      for (let i = 0; i < n; i++) y[i] += (h / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
-      if (y.some((v) => !Number.isFinite(v))) {
-        return { t: tOut, series, error: `The solution blew up at t ≈ ${(s * h).toPrecision(3)} — try a smaller time step` };
+    if (method === 'rk45') {
+      const rtol = model.tol && model.tol > 0 ? model.tol : 1e-8;
+      const atol = rtol * 1e-3;
+      // Cap the step so the recorded trajectory stays smooth enough to plot and animate.
+      const hMax = model.tEnd / 400;
+      const k: number[][] = Array.from({ length: 7 }, () => new Array<number>(n));
+      const yNew = new Array<number>(n);
+      let t = 0;
+      let h = Math.min(hMax, model.tEnd * 1e-3);
+      while (t < model.tEnd * (1 - 1e-12)) {
+        if (stats.steps + stats.rejected > MAX_STEPS) {
+          return finish({ t: tOut, series, error: 'Too many steps — the system may be stiff; loosen the tolerance or shorten the run' });
+        }
+        h = Math.min(h, model.tEnd - t);
+        f(t, y, k[0]);
+        for (let st = 1; st < 7; st++) {
+          for (let i = 0; i < n; i++) {
+            let acc = 0;
+            for (let j = 0; j < st; j++) acc += DP_A[st][j] * k[j][i];
+            tmp[i] = y[i] + h * acc;
+          }
+          f(t + DP_C[st] * h, tmp, k[st]);
+        }
+        let err = 0;
+        for (let i = 0; i < n; i++) {
+          let s5 = 0, s4 = 0;
+          for (let j = 0; j < 7; j++) { s5 += DP_B5[j] * k[j][i]; s4 += DP_B4[j] * k[j][i]; }
+          yNew[i] = y[i] + h * s5;
+          const scale = atol + rtol * Math.max(Math.abs(y[i]), Math.abs(yNew[i]));
+          err = Math.max(err, Math.abs(h * (s5 - s4)) / scale);
+        }
+        if (!Number.isFinite(err)) return blewUp(t);
+        if (err <= 1) {
+          t += h;
+          for (let i = 0; i < n; i++) y[i] = yNew[i];
+          stats.steps++;
+          record(t);
+          if (shouldStop(t)) break;
+        } else stats.rejected++;
+        h = Math.min(hMax, h * Math.min(5, Math.max(0.2, 0.9 * Math.pow(Math.max(err, 1e-10), -0.2))));
+        if (h < model.tEnd * 1e-14) return finish({ t: tOut, series, error: `Step size collapsed at t ≈ ${t.toPrecision(3)} — the equations may be singular there` });
       }
-      const last = s === steps;
-      let stopped = false;
-      if (stop) {
-        scope.t = s * h;
-        for (let i = 0; i < n; i++) scope[names[i]] = y[i];
-        stopped = Boolean(stop.evaluate(scope));
+    } else {
+      const h = model.dt;
+      const steps = Math.ceil(model.tEnd / h - 1e-9);
+      if (steps > MAX_STEPS) throw new Error(`That is ${steps.toLocaleString()} steps — increase the time step or shorten the run`);
+      const k1 = new Array<number>(n), k2 = new Array<number>(n), k3 = new Array<number>(n), k4 = new Array<number>(n);
+      // Record a bounded number of samples so charts stay fast.
+      const stride = Math.max(1, Math.ceil(steps / MAX_SAMPLES));
+      for (let s = 1; s <= steps; s++) {
+        const t = (s - 1) * h;
+        f(t, y, k1);
+        if (method === 'euler') {
+          for (let i = 0; i < n; i++) y[i] += h * k1[i];
+        } else {
+          for (let i = 0; i < n; i++) tmp[i] = y[i] + (h / 2) * k1[i];
+          f(t + h / 2, tmp, k2);
+          for (let i = 0; i < n; i++) tmp[i] = y[i] + (h / 2) * k2[i];
+          f(t + h / 2, tmp, k3);
+          for (let i = 0; i < n; i++) tmp[i] = y[i] + h * k3[i];
+          f(t + h, tmp, k4);
+          for (let i = 0; i < n; i++) y[i] += (h / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
+        }
+        stats.steps++;
+        if (y.some((v) => !Number.isFinite(v))) return blewUp(s * h);
+        const stopped = shouldStop(s * h);
+        if (s % stride === 0 || s === steps || stopped) record(s * h);
+        if (stopped) break;
       }
-      if (s % stride === 0 || last || stopped) record(s * h);
-      if (stopped) break;
     }
   } catch (err) {
-    return { t: tOut, series, error: err instanceof Error ? err.message : String(err) };
+    return finish({ t: tOut, series, error: err instanceof Error ? err.message : String(err) });
   }
-  return { t: tOut, series };
+
+  // Thin very long adaptive runs, always keeping the final sample.
+  if (tOut.length > MAX_SAMPLES * 1.5) {
+    const stride = Math.ceil(tOut.length / MAX_SAMPLES);
+    const keep = (arr: number[]) => arr.filter((_, i) => i % stride === 0 || i === arr.length - 1);
+    const thinned: Record<string, number[]> = {};
+    for (const key of Object.keys(series)) thinned[key] = keep(series[key]);
+    return finish({ t: keep(tOut), series: thinned });
+  }
+  return finish({ t: tOut, series });
+}
+
+/** Index of the last recorded sample at or before time `t` (samples need not be evenly spaced). */
+export function sampleIndex(times: number[], t: number): number {
+  let lo = 0;
+  let hi = times.length - 1;
+  if (hi < 0) return 0;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (times[mid] <= t) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
 }
 
 /** Evaluate an expression at every recorded sample of a run (for scenes and custom plots). */

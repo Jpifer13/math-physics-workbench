@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toLatex } from './expr';
+import { toLatex, toText } from './expr';
 import { evaluate, linspace, sweep, type Graph } from './graph';
 import { findExtrema, findRoots, integrate } from './numeric';
 import { simulate, type OdeModel } from './ode';
@@ -48,6 +48,7 @@ describe('graph engine', () => {
     expect(r.q!.v).toBeCloseTo(8.987551787e16, -8);
     expect(formatQuantity(r.q!).unit).toBe('J');
     expect(toLatex(r.ex!)).toBe('m\\,c^{2}');
+    expect(toText(r.ex!)).toBe('m * c^2');
   });
   it('reports dimension mismatches', () => {
     const g: Graph = {
@@ -101,6 +102,7 @@ describe('graph engine', () => {
     expect(r.q!.v).toBeCloseTo(400 / 9.80665, 6);
     expect(siUnitFor(r.q!.d)).toBe('m');
     expect(toLatex(r.ex!)).toBe('\\frac{v_{0}^{2}\\,\\sin\\left(2\\,\\theta\\right)}{g}');
+    expect(toText(r.ex!)).toBe('v_0^2 * sin(2 * theta) / g');
   });
   it('sweeps an input', () => {
     const s = sweep(emc2, 'E', 'm', linspace(0, 2, 3));
@@ -123,7 +125,7 @@ describe('numeric', () => {
 
 describe('ode', () => {
   const sho: OdeModel = {
-    id: 'sho', name: 'SHO', summary: '', equations: [],
+    id: 'sho', name: 'SHO', summary: '',
     states: [
       { name: 'x', init: 'x0', deriv: 'v' },
       { name: 'v', init: '0', deriv: '-k/m*x' },

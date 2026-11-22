@@ -3,12 +3,14 @@ export interface OpenedFile {
   path: string;
   text: string;
 }
-export type MenuAction = 'new' | 'open' | 'save' | 'saveAs' | 'tab:flow' | 'tab:sim' | 'tab:math';
+export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'tab:sim' | 'tab:flow' | 'tab:math';
+export type DocExt = 'physsim' | 'physflow';
 
 export interface DesktopApi {
   platform: string;
-  openFlow(): Promise<OpenedFile | null>;
-  saveFlow(text: string, filePath: string | null, suggestedName: string): Promise<string | null>;
+  openDocument(): Promise<OpenedFile | null>;
+  saveDocument(text: string, filePath: string | null, suggestedName: string, ext: DocExt): Promise<string | null>;
+  exportFile(text: string, suggestedName: string, ext: 'csv'): Promise<string | null>;
   onMenu(cb: (action: MenuAction) => void): () => void;
   onFileOpened(cb: (file: OpenedFile) => void): () => void;
   ready(): void;

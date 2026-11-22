@@ -14,8 +14,8 @@ export interface Val {
 }
 
 const BUILTIN: Record<string, Val> = {
-  pi: { q: Q.scalar(Math.PI), ex: sym('\\pi') },
-  e: { q: Q.scalar(Math.E), ex: sym('\\mathrm{e}') },
+  pi: { q: Q.scalar(Math.PI), ex: sym('\\pi', undefined, 'pi') },
+  e: { q: Q.scalar(Math.E), ex: sym('\\mathrm{e}', undefined, 'e') },
 };
 
 const cache = new Map<string, MathNode>();

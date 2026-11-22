@@ -38,14 +38,14 @@ export function Inspector() {
             onChange={(e) => setMeta({ description: e.target.value })}
             aria-label="Flow description"
           />
-          <div className="panel-subtitle">How to build</div>
-          <ol className="howto">
-            <li><b>Drag blocks</b> from the left onto the canvas — inputs, constants, operations.</li>
-            <li><b>Wire them</b> by dragging from a dot on the right edge of one block to a dot on the left edge of another.</li>
-            <li>End with a <b>Result</b> block. Its equation and a chart appear in the modeling panel below.</li>
-            <li><b>Select a block</b> to edit it here. Units are checked on every wire.</li>
-          </ol>
-          <p className="muted">Delete a selected block or wire with <kbd>Backspace</kbd>. Scroll to zoom, drag the background to pan.</p>
+          <div className="panel-subtitle">Working with flows</div>
+          <ul className="howto">
+            <li><b>Compose</b> by dragging blocks onto the canvas and wiring an output port (right) to an input port (left).</li>
+            <li><b>Dimensions are checked</b> on every wire; a mismatch is reported on the block that caused it.</li>
+            <li>A <b>Result</b> block gives the composed equation, its value, and a sweep over any input in the panel below.</li>
+            <li><b>Copy expression</b> puts the composed formula on the clipboard, ready to paste into a simulation's equations.</li>
+          </ul>
+          <p className="muted">Select a block to edit it here. <kbd>Backspace</kbd> deletes the selection; scroll to zoom, drag the background to pan.</p>
         </div>
       </aside>
     );

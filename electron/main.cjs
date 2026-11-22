@@ -9,10 +9,16 @@ const path = require('node:path');
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const isMac = process.platform === 'darwin';
-const FILE_FILTERS = [
-  { name: 'Physics flow', extensions: ['physflow', 'json'] },
+const DOC_TYPES = {
+  physsim: { name: 'Physics simulation', extensions: ['physsim'] },
+  physflow: { name: 'Physics equation flow', extensions: ['physflow'] },
+  csv: { name: 'Comma-separated values', extensions: ['csv'] },
+};
+const OPEN_FILTERS = [
+  { name: 'Physics Tooling documents', extensions: ['physsim', 'physflow', 'json'] },
   { name: 'All files', extensions: ['*'] },
 ];
+const safeName = (name, fallback) => String(name || fallback).replace(/[\\/:*?"<>|]+/g, '-');
 
 /** @type {BrowserWindow | null} */
 let win = null;
@@ -43,7 +49,7 @@ function saveWindowState() {
 }
 
 // ------------------------------------------------------------------- files
-function readFlow(filePath) {
+function readDoc(filePath) {
   const text = fs.readFileSync(filePath, 'utf8');
   approvedPaths.add(filePath);
   app.addRecentDocument(filePath);
@@ -56,28 +62,30 @@ function deliverFile(filePath) {
     return;
   }
   try {
-    win.webContents.send('file:opened', readFlow(filePath));
+    win.webContents.send('file:opened', readDoc(filePath));
   } catch (err) {
     dialog.showErrorBox('Could not open file', String(err.message || err));
   }
 }
 
-const flowArg = (argv) => argv.slice(1).find((a) => /\.(physflow|json)$/i.test(a) && fs.existsSync(a));
+const docArg = (argv) => argv.slice(1).find((a) => /\.(physsim|physflow|json)$/i.test(a) && fs.existsSync(a));
 
-ipcMain.handle('flow:open', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Open flow', properties: ['openFile'], filters: FILE_FILTERS });
+ipcMain.handle('doc:open', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Open', properties: ['openFile'], filters: OPEN_FILTERS });
   if (r.canceled || !r.filePaths[0]) return null;
-  return readFlow(r.filePaths[0]);
+  return readDoc(r.filePaths[0]);
 });
 
-ipcMain.handle('flow:save', async (_e, text, filePath, suggestedName) => {
+ipcMain.handle('doc:save', async (_e, text, filePath, suggestedName, ext) => {
   if (typeof text !== 'string') throw new Error('Nothing to save');
+  const type = DOC_TYPES[ext];
+  if (!type || ext === 'csv') throw new Error('Unknown document type');
   let target = typeof filePath === 'string' && approvedPaths.has(filePath) ? filePath : null;
   if (!target) {
     const r = await dialog.showSaveDialog(win, {
-      title: 'Save flow',
-      defaultPath: `${String(suggestedName || 'flow').replace(/[\\/:*?"<>|]+/g, '-')}.physflow`,
-      filters: FILE_FILTERS,
+      title: 'Save',
+      defaultPath: `${safeName(suggestedName, 'untitled')}.${ext}`,
+      filters: [type, { name: 'All files', extensions: ['*'] }],
     });
     if (r.canceled || !r.filePath) return null;
     target = r.filePath;
@@ -86,6 +94,20 @@ ipcMain.handle('flow:save', async (_e, text, filePath, suggestedName) => {
   approvedPaths.add(target);
   app.addRecentDocument(target);
   return target;
+});
+
+// Data exports always go through a Save dialog; they are never tied to an open document.
+ipcMain.handle('export:save', async (_e, text, suggestedName, ext) => {
+  if (typeof text !== 'string') throw new Error('Nothing to export');
+  const type = DOC_TYPES[ext] ?? DOC_TYPES.csv;
+  const r = await dialog.showSaveDialog(win, {
+    title: 'Export data',
+    defaultPath: `${safeName(suggestedName, 'data')}.${type.extensions[0]}`,
+    filters: [type],
+  });
+  if (r.canceled || !r.filePath) return null;
+  await fs.promises.writeFile(r.filePath, text, 'utf8');
+  return r.filePath;
 });
 
 ipcMain.on('app:ready', () => {
@@ -107,7 +129,8 @@ function buildMenu() {
     {
       label: '&File',
       submenu: [
-        { label: 'New Flow', accelerator: 'CmdOrCtrl+N', click: send('new') },
+        { label: 'New Simulation', accelerator: 'CmdOrCtrl+N', click: send('new:sim') },
+        { label: 'New Equation Flow', accelerator: 'CmdOrCtrl+Shift+N', click: send('new:flow') },
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: send('open') },
         ...(isMac ? [{ role: 'recentDocuments', submenu: [{ role: 'clearRecentDocuments' }] }] : []),
         { type: 'separator' },
@@ -121,8 +144,8 @@ function buildMenu() {
     {
       label: '&View',
       submenu: [
-        { label: 'Flow Builder', accelerator: 'CmdOrCtrl+1', click: send('tab:flow') },
-        { label: 'Simulation Lab', accelerator: 'CmdOrCtrl+2', click: send('tab:sim') },
+        { label: 'Simulations', accelerator: 'CmdOrCtrl+1', click: send('tab:sim') },
+        { label: 'Equation Flows', accelerator: 'CmdOrCtrl+2', click: send('tab:flow') },
         { label: 'Math Tools', accelerator: 'CmdOrCtrl+3', click: send('tab:math') },
         { type: 'separator' },
         { role: 'resetZoom' },
@@ -144,7 +167,7 @@ function buildMenu() {
               type: 'info',
               title: 'About Physics Tooling',
               message: 'Physics Tooling',
-              detail: `Version ${app.getVersion()}\nA visual workbench for building and exploring physics equations.`,
+              detail: `Version ${app.getVersion()}\nA virtual laboratory for building simulations and running numerical experiments.`,
             }),
         },
       ],
@@ -199,7 +222,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.focus();
-    const f = flowArg(argv);
+    const f = docArg(argv);
     if (f) deliverFile(f);
   });
   // macOS: a flow file was double-clicked or dropped on the dock icon.
@@ -209,7 +232,7 @@ if (!app.requestSingleInstanceLock()) {
     deliverFile(filePath);
   });
   app.whenReady().then(() => {
-    pendingFile = pendingFile ?? flowArg(process.argv) ?? null;
+    pendingFile = pendingFile ?? docArg(process.argv) ?? null;
     buildMenu();
     createWindow();
     app.on('activate', () => {

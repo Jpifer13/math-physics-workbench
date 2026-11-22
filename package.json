@@ -33,7 +33,7 @@
     "zustand": "^5.1.0"
   },
   "productName": "Physics Tooling",
-  "description": "A visual workbench for building and exploring physics equations.",
+  "description": "A virtual laboratory for building simulations and running numerical experiments.",
   "author": "Physics Tooling",
   "main": "electron/main.cjs",
   "build": {
@@ -50,9 +50,15 @@
     },
     "fileAssociations": [
       {
+        "ext": "physsim",
+        "name": "Physics Simulation",
+        "description": "Physics Tooling simulation",
+        "role": "Editor"
+      },
+      {
         "ext": "physflow",
         "name": "Physics Flow",
-        "description": "Physics Tooling flow",
+        "description": "Physics Tooling equation flow",
         "role": "Editor"
       }
     ],

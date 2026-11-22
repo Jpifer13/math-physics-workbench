@@ -1,5 +1,7 @@
-import { useContext, useMemo } from 'react';
-import { toLatex } from '../core/expr';
+import { useContext, useMemo, useState } from 'react';
+import { toLatex, toText } from '../core/expr';
+import { toCsv } from '../core/measure';
+import { exportCsv } from '../documents';
 import { linspace, sweep, sweep2D, upstreamOf, type OutputData, type QuantityData } from '../core/graph';
 import { symbolToLatex } from '../core/expr';
 import { dimName, fmtNumLatex, formatQuantity, getUnit, quantityText, unitLatex, dimEq } from '../core/units';
@@ -19,6 +21,7 @@ export function ModelPanel() {
   const model = useFlow((s) => s.model);
   const setModel = useFlow((s) => s.setModel);
   const results = useContext(ResultsContext);
+  const [status, setStatus] = useState('');
 
   // The engine only cares about wiring and settings, not where blocks sit.
   const graphKey = JSON.stringify([nodes.map((n) => [n.id, n.data]), edges.map((e) => [e.source, e.target, e.targetHandle])]);
@@ -73,6 +76,33 @@ export function ModelPanel() {
   const symTex = symbolToLatex(outCfg?.symbol || outCfg?.label || 'y');
   const outName = outCfg?.label || 'Output';
 
+  const copy = async (text: string, what: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(`${what} copied`);
+    } catch {
+      setStatus('Copy failed');
+    }
+  };
+  const exportData = async () => {
+    const xName = xCfg ? axisLabel(xCfg.label, xCfg.unit) : 'x';
+    const zName = axisLabel(outName, outUnit);
+    let csv = '';
+    if (curve) csv = toCsv([{ name: xName, values: curve.x }, { name: zName, values: curve.y }]);
+    else if (map && yCfg) {
+      // Long format: one row per grid point.
+      const cols = [[], [], []] as number[][];
+      map.ys.forEach((yv, j) => map.xs.forEach((xv, i) => { cols[0].push(xv); cols[1].push(yv); cols[2].push(map.z[j][i]); }));
+      csv = toCsv([{ name: xName, values: cols[0] }, { name: axisLabel(yCfg.label, yCfg.unit), values: cols[1] }, { name: zName, values: cols[2] }]);
+    }
+    if (!csv) return;
+    try {
+      setStatus(await exportCsv(csv, `${outName} sweep`));
+    } catch (err) {
+      setStatus(`Export failed: ${err instanceof Error ? err.message : err}`);
+    }
+  };
+
   return (
     <section className="model-panel">
       <div className="model-eq">
@@ -91,8 +121,12 @@ export function ModelPanel() {
             <div className="eq-result">
               <Tex block tex={`= ${fmtNumLatex(display.value, 5)}${unitLatex(display.unit)}`} />
             </div>
+            <div className="eq-actions">
+              <button className="btn small" title="Plain-text expression, ready to paste into a simulation equation or a Formula block" onClick={() => void copy(toText(result.ex!), 'Expression')}>Copy expression</button>
+              <button className="btn small" onClick={() => void copy(`${symTex} = ${toLatex(result.ex!)}`, 'LaTeX')}>Copy LaTeX</button>
+            </div>
             <div className="muted center">
-              Quantity: {dimName(result.q.d)}{display.unit !== formatQuantity(result.q).unit ? ` · ${quantityText(result.q)} in SI` : ''}
+              {status ? `${status} · ` : ''}Quantity: {dimName(result.q.d)}{display.unit !== formatQuantity(result.q).unit ? ` · ${quantityText(result.q)} in SI` : ''}
             </div>
           </div>
         ) : (
@@ -146,6 +180,7 @@ export function ModelPanel() {
           ) : (
             <span className="muted">Connect at least one input block to chart how {outName.toLowerCase()} responds.</span>
           )}
+          {(curve || map) && <button className="btn small" onClick={() => void exportData()}>Export (CSV)</button>}
         </div>
         {xNode && xCfg && !valid && <div className="readout error">The sweep range needs “to” greater than “from”.</div>}
         {curve && xCfg && (

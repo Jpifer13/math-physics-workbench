@@ -134,13 +134,13 @@ export function evaluate(graph: Graph, opts: EvalOptions = {}): Map<string, Node
         if (!Number.isFinite(value)) throw new Error('Enter a number');
         return {
           q: fromUnit(value, d.unit),
-          ex: sym(symbolToLatex(d.symbol || d.label), `${fmtNumLatex(value)}${unitLatex(d.unit)}`),
+          ex: sym(symbolToLatex(d.symbol || d.label), `${fmtNumLatex(value)}${unitLatex(d.unit)}`, (d.symbol || d.label).replace(/[^A-Za-z0-9_]+/g, '_')),
         };
       }
       case 'constant': {
         const c = getConstant((node.data as ConstantData).constId);
         if (!c) throw new Error('Unknown constant');
-        return { q: c.q, ex: sym(c.latex, `${fmtNumLatex(c.q.v)}${unitLatex(c.unit)}`) };
+        return { q: c.q, ex: sym(c.latex, `${fmtNumLatex(c.q.v)}${unitLatex(c.unit)}`, c.id === 'euler' ? 'e' : c.id) };
       }
       case 'op': {
         const op = getOp((node.data as OpData).op);
