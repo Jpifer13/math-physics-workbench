@@ -14,7 +14,7 @@ and why, and `docs/integrations.md` for the bridges to other software.
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~140 tests
+npm test             # vitest; ~145 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
@@ -100,7 +100,10 @@ UI.** New numerical behaviour goes there with tests; views only display it.
 - **External programs** are started by `electron/main.cjs` with `execFile`
   (no shell) from a fixed table. Adding one means an entry there plus a
   generator; see "Adding another target" in `docs/integrations.md`.
-- **Workers.** Scans, fits and profiles run in web workers and fall back to
+- **Tests are scoped to `src/`.** `vite.config.ts` limits vitest to
+  `src/**/*.test.ts`, because git worktrees under `.claude/worktrees` hold
+  full copies of the repository whose tests would otherwise run too.
+- **Workers.** Scans, fits, profiles and bootstraps run in web workers and fall back to
   the main thread if a worker cannot start. Models are sent without their
   attached data (`lean()` in `compute.ts`).
 - **Events.** A discrete event fires on a false→true crossing, located by
@@ -146,7 +149,7 @@ so do look.
 
 Done and verified: the three workspaces, four solvers with events, experiments
 (1-D and 2-D), uncertainty propagation and Sobol sensitivity, fitting with
-uncertainties and profiles, accuracy checks, expectations, provenance, unit
+uncertainties, ties, profiles and bootstrap, accuracy checks, expectations, provenance, unit
 checking, undo/redo, code export, running in external tools, the desktop
 shell, and Linux packaging.
 
@@ -173,12 +176,11 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 - Whether to add a contributor agreement before accepting outside contributions.
 
 **Next, in roadmap order** (`docs/roadmap.md` has the evidence and detail):
-1. Rest of item 8 — bootstrap uncertainties; tying one fit parameter to another.
-2. Rest of item 9 — image export for heat maps and 3D views; figure size and
+1. Rest of item 9 — image export for heat maps and 3D views; figure size and
    font control; PDF.
-3. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
+2. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
    inputs; feeding fitted uncertainties in as the input spread.
-4. Items 10–12 — diff-friendly files and a compare view, sub-flows, in-app
+3. Items 10–12 — diff-friendly files and a compare view, sub-flows, in-app
    function reference, a command-line mode.
 
 Known rough edges: `npm audit` reports a moderate advisory in the installer

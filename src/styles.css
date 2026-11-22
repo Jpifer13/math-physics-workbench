@@ -508,3 +508,8 @@ ul.howto { padding-left: 18px; }
 .swatch.bar { background: currentColor; margin-right: 5px; vertical-align: middle; }
 .bar-label { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; fill: var(--text-secondary); }
 .bar-whisker { stroke: var(--text); stroke-width: 1.2; fill: none; }
+.tie-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.tie-row select { min-width: 90px; }
+.tie-row input { flex: 1; max-width: 420px; }
+.tie-add { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 10px; }
+.tie-add .help { margin: 0; }

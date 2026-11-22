@@ -155,13 +155,19 @@ larger than the parameter itself signal a poorly constrained fit.
 ([Cornell notes][cornell-fit], [lmfit group][lmfit-guess], [debugging bad
 fits][nlsq]) — practitioner consensus rather than a survey.*
 
-**Status: mostly done.** *Profile the fit* steps each parameter across a
+**Status: done.** *Profile the fit* steps each parameter across a
 range, re-fits the others at every value, and reads the one-sigma interval off
 the resulting curve — asymmetric where the problem is, and flagged if a second
 minimum appears. A runs test on the residuals warns when they are not randomly
 scattered, i.e. when the model, not the parameters, is the problem.
-**Still open:** bootstrap resampling, and tying one parameter to another
-(holding one fixed is already possible by not ticking it).
+*Bootstrap* resamples the data points with replacement and refits 200 times,
+reporting 68% and 95% intervals from the spread of the refitted values beside
+the linear estimate, and says which to prefer when they disagree. A parameter
+can be tied to others by an expression, so it follows them through the fit,
+the profile and the bootstrap, with its uncertainty carried through the tie.
+**Limit:** the bootstrap resamples points independently, so like the other
+estimates it understates the error when residuals are correlated in time; the
+runs test is what flags that case.
 
 ---
 
@@ -243,10 +249,9 @@ free of UI code, which makes this mostly packaging.
 
 ## Suggested order for what remains
 
-Done: items 1 to 7; items 8 and 9 mostly.
+Done: items 1 to 8; item 9 mostly.
 
-1. The rest of items 8 and 9 — bootstrap and tied parameters; images of heat
-   maps and 3D views, figure sizing.
+1. The rest of item 9 — images of heat maps and 3D views, figure sizing, PDF.
 2. Items 10, 11, 12 as the user base and model sizes grow.
 
 ## Sources

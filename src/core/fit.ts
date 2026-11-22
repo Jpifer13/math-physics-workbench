@@ -2,7 +2,9 @@
  * Fitting a model to measured data: CSV parsing, interpolation of a run onto
  * the measurement times, and a derivative-free least-squares optimiser.
  */
+import { compile as mathCompile } from 'mathjs';
 import { simulate, type OdeModel, type SimResult } from './ode';
+import { quantile, seededRandom } from './sensitivity';
 
 export interface Column {
   name: string;
@@ -139,12 +141,21 @@ export interface FitRequest {
    * search from a poor guess can lock onto the wrong one.
    */
   survey?: boolean;
+  /**
+   * Parameters computed from the others rather than fitted or held fixed:
+   * name → expression, e.g. `{ k2: '2 * k1' }`. An expression may use any
+   * parameter that is not itself tied.
+   */
+  ties?: Record<string, string>;
 }
 
 export interface FitResult {
   values: Record<string, number>;
   /** One-standard-deviation uncertainties from the local linearisation (NaN if undetermined). */
   errors: Record<string, number>;
+  /** Values of the tied parameters at the best fit, and their uncertainties carried through the tie. */
+  tied: Record<string, number>;
+  tiedErrors: Record<string, number>;
   /** Correlation matrix of the fitted parameters, in the order of `values`. */
   correlation: number[][];
   /** Fit quality per target, before and after. */
@@ -177,9 +188,42 @@ export function invert(a: number[][]): number[][] | null {
 }
 
 /** The pieces of a fitting problem shared by the fit itself and by profile scans. */
-function problemOf({ model, params, targets, bounded }: FitRequest) {
+function problemOf({ model, params, targets, bounded, ties }: FitRequest) {
   const chosen = model.params.filter((p) => params.includes(p.name));
   if (!chosen.length) throw new Error('Choose at least one parameter to fit');
+
+  // Ties: each tied parameter follows an expression in the untied ones on every run.
+  const tieList = Object.entries(ties ?? {}).filter(([name, expr]) => expr.trim() && model.params.some((p) => p.name === name));
+  const tiedNames = new Set(tieList.map(([name]) => name));
+  const compiledTies = tieList.map(([name, expr]) => {
+    if (params.includes(name)) throw new Error(`${name} is tied to other parameters, so it cannot also be free to vary. Untick it or remove the tie.`);
+    try {
+      return { name, expr, code: mathCompile(expr) };
+    } catch {
+      throw new Error(`The tie for ${name} is not a valid expression: “${expr}”`);
+    }
+  });
+  /** Parameter overrides with the tied parameters filled in. */
+  const resolve = (overrides: Record<string, number>): Record<string, number> => {
+    if (!compiledTies.length) return overrides;
+    const scope: Record<string, number> = {};
+    for (const p of model.params) if (!tiedNames.has(p.name)) scope[p.name] = overrides[p.name] ?? p.value;
+    const out = { ...overrides };
+    for (const tie of compiledTies) {
+      try {
+        out[tie.name] = Number(tie.code.evaluate({ ...scope }));
+      } catch {
+        out[tie.name] = NaN;
+      }
+    }
+    return out;
+  };
+  const start = resolve({});
+  for (const tie of compiledTies) {
+    if (!Number.isFinite(start[tie.name])) {
+      throw new Error(`The tie for ${tie.name} (“${tie.expr}”) does not give a number. It may use the other parameters, but not ones that are themselves tied.`);
+    }
+  }
   if (!targets.length) throw new Error('Choose at least one measured series to fit');
   const points = targets.reduce((s, t) => s + t.t.length, 0);
   if (points < chosen.length + 1) throw new Error('Not enough data points for that many parameters');
@@ -198,8 +242,13 @@ function problemOf({ model, params, targets, bounded }: FitRequest) {
   const base: OdeModel = { ...model, tEnd: Math.max(tMax * 1.0001, model.dt * 2), stopWhen: undefined };
   /** Residuals per target with the chosen parameters set to `x` (others, optionally, to `fixed`). */
   const evaluate = (x: number[], fixed: Record<string, number> = {}) => {
-    const run = simulate(base, { ...fixed, ...Object.fromEntries(chosen.map((p, i) => [p.name, x[i]])) });
+    const run = simulate(base, resolve({ ...fixed, ...Object.fromEntries(chosen.map((p, i) => [p.name, x[i]])) }));
     return targets.map((t) => residuals(run, t.observable, t));
+  };
+  /** Values of the tied parameters when the chosen ones are set to `x`. */
+  const tiedAt = (x: number[]): Record<string, number> => {
+    const all = resolve(Object.fromEntries(chosen.map((p, i) => [p.name, x[i]])));
+    return Object.fromEntries(compiledTies.map((tie) => [tie.name, all[tie.name]]));
   };
   /** Weighted residual vector across all targets (NaN where the run has no value). */
   const weighted = (rs: Residuals[]) => rs.flatMap((r, k) => targets[k].t.map((_, i) => (r.residuals[i] ?? NaN) * weights[k][i]));
@@ -209,12 +258,12 @@ function problemOf({ model, params, targets, bounded }: FitRequest) {
     return { ss, used };
   };
   const outside = (x: number[]) => !!bounded && x.some((v, i) => v < chosen[i].min || v > chosen[i].max);
-  return { chosen, hasSigma, evaluate, weighted, misfit, outside };
+  return { chosen, hasSigma, evaluate, weighted, misfit, outside, tiedAt };
 }
 
 export function fitModel(request: FitRequest): FitResult {
   const { targets, survey = true } = request;
-  const { chosen, hasSigma, evaluate, weighted, misfit, outside } = problemOf(request);
+  const { chosen, hasSigma, evaluate, weighted, misfit, outside, tiedAt } = problemOf(request);
 
   const x0 = chosen.map((p) => p.value);
   const before = evaluate(x0);
@@ -268,6 +317,8 @@ export function fitModel(request: FitRequest): FitResult {
   const ss = w0.reduce((a, v) => (Number.isFinite(v) ? a + v * v : a), 0);
   const errors: Record<string, number> = Object.fromEntries(chosen.map((c) => [c.name, NaN]));
   let correlation: number[][] = chosen.map((_, i) => chosen.map((__, j) => (i === j ? 1 : NaN)));
+  const tied = tiedAt(best.x);
+  const tiedErrors: Record<string, number> = Object.fromEntries(Object.keys(tied).map((name) => [name, NaN]));
   if (N > p) {
     const Jc = chosen.map((_, j) => {
       const step = 1e-4 * Math.max(Math.abs(best.x[j]), scale[j] * 0.1, 1e-12);
@@ -281,18 +332,97 @@ export function fitModel(request: FitRequest): FitResult {
     if (inv && inv.every((row, i) => row[i] > 0)) {
       chosen.forEach((c, i) => { errors[c.name] = Math.sqrt(s2 * inv[i][i]); });
       correlation = inv.map((row, i) => row.map((v, j) => v / Math.sqrt(inv[i][i] * inv[j][j])));
+      // A tied parameter inherits its uncertainty through the gradient of the tie: σ² = g·C·gᵀ.
+      const grads = chosen.map((_, j) => {
+        const step = 1e-6 * Math.max(Math.abs(best.x[j]), scale[j] * 0.1, 1e-12);
+        const up = tiedAt(best.x.map((v, k) => (k === j ? v + step : v)));
+        const dn = tiedAt(best.x.map((v, k) => (k === j ? v - step : v)));
+        return Object.fromEntries(Object.keys(tied).map((name) => [name, (up[name] - dn[name]) / (2 * step)]));
+      });
+      for (const name of Object.keys(tied)) {
+        const variance = s2 * grads.reduce((sum, gi, i) => sum + grads.reduce((inner, gj, j) => inner + gi[name] * inv[i][j] * gj[name], 0), 0);
+        tiedErrors[name] = Math.sqrt(Math.max(0, variance));
+      }
     }
   }
 
   return {
     values: Object.fromEntries(chosen.map((c, i) => [c.name, best.x[i]])),
     errors,
+    tied,
+    tiedErrors,
     correlation,
     targets: targets.map((t, k) => ({ observable: t.observable, before: before[k], after: after[k] })),
     reducedChi2: hasSigma && N > p ? ss / (N - p) : undefined,
     evals: evals + 2 * p + 1,
     converged: best.converged,
   };
+}
+
+// ---------------------------------------------------------------- bootstrap
+
+export interface BootstrapRequest extends FitRequest {
+  /** The fitted values, from fitModel: every refit starts there. */
+  values: Record<string, number>;
+  seed?: number;
+}
+
+/**
+ * One bootstrap replicate: draw the data points again with replacement (within
+ * each series), refit from the best fit, and return the parameter values that
+ * result — tied ones included. Null if that refit fails. The draw depends only
+ * on the seed and the index, so replicates can be computed in any order, on
+ * any number of threads, and come out the same.
+ */
+export function bootstrapReplicate(request: BootstrapRequest, index: number): Record<string, number> | null {
+  const random = seededRandom((((request.seed ?? 1) >>> 0) + Math.imul(index + 1, 0x9e3779b1)) >>> 0);
+  const targets = request.targets.map((t) => {
+    const pick = t.t.map(() => Math.floor(random() * t.t.length));
+    return { observable: t.observable, t: pick.map((i) => t.t[i]), y: pick.map((i) => t.y[i]), sigma: t.sigma && pick.map((i) => t.sigma![i]) };
+  });
+  const model = { ...request.model, params: request.model.params.map((p) => (p.name in request.values ? { ...p, value: request.values[p.name] } : p)) };
+  try {
+    const fit = fitModel({ ...request, model, targets, survey: false });
+    const all = { ...fit.values, ...fit.tied };
+    return Object.values(all).every(Number.isFinite) ? all : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface BootstrapSummary {
+  param: string;
+  median: number;
+  sd: number;
+  /** Central 68% and 95% intervals of the refitted values. */
+  lo68: number;
+  hi68: number;
+  lo95: number;
+  hi95: number;
+}
+
+export interface BootstrapResult {
+  params: BootstrapSummary[];
+  /** Replicates whose refit succeeded. */
+  used: number;
+  failed: number;
+}
+
+/** Percentile intervals of each parameter over the replicates that succeeded. */
+export function summarizeBootstrap(replicates: (Record<string, number> | null)[], names: string[]): BootstrapResult {
+  const ok = replicates.filter((r): r is Record<string, number> => !!r);
+  const params = names.map((param) => {
+    const v = ok.map((r) => r[param]).sort((a, b) => a - b);
+    const mean = v.reduce((s, x) => s + x, 0) / v.length;
+    return {
+      param,
+      median: quantile(v, 0.5),
+      sd: v.length > 1 ? Math.sqrt(v.reduce((s, x) => s + (x - mean) ** 2, 0) / (v.length - 1)) : NaN,
+      lo68: quantile(v, 0.16), hi68: quantile(v, 0.84),
+      lo95: quantile(v, 0.025), hi95: quantile(v, 0.975),
+    };
+  });
+  return { params, used: ok.length, failed: replicates.length - ok.length };
 }
 
 // ------------------------------------------------------------ profile scans

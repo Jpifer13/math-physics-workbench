@@ -3,7 +3,10 @@
  * across a small pool of workers; if workers are unavailable everything falls
  * back to cooperative slices on the main thread.
  */
-import { fitModel, profileFit, type FitRequest, type FitResult, type Profile, type ProfileRequest } from '../core/fit';
+import {
+  bootstrapReplicate, fitModel, profileFit, summarizeBootstrap,
+  type BootstrapRequest, type BootstrapResult, type FitRequest, type FitResult, type Profile, type ProfileRequest,
+} from '../core/fit';
 import type { MeasureId } from '../core/measure';
 import type { OdeModel } from '../core/ode';
 import { runSample } from '../core/sensitivity';
@@ -131,4 +134,49 @@ export function runProfile(request: ProfileRequest): Task<Profile[]> {
     }
   });
   return { promise, cancel: () => worker?.terminate() };
+}
+
+/** Refit resampled data `count` times across the worker pool and summarise each parameter's spread. */
+export function runBootstrap(request: BootstrapRequest, count: number, names: string[], onProgress: (fraction: number) => void): Task<BootstrapResult> {
+  const replicates = new Array<Record<string, number> | null>(count).fill(null);
+  const lite = { ...request, model: lean(request.model) };
+  let cancelled = false;
+  let workers: Worker[] = [];
+  const stop = () => { workers.forEach((w) => w.terminate()); workers = []; };
+
+  const onMain = async () => {
+    for (let i = 0; i < count; i++) {
+      if (cancelled) throw new Error('cancelled');
+      replicates[i] = bootstrapReplicate(request, i);
+      onProgress((i + 1) / count);
+      await new Promise((r) => setTimeout(r));
+    }
+    return summarizeBootstrap(replicates, names);
+  };
+
+  const promise = new Promise<BootstrapResult>((resolve, reject) => {
+    const fallback = () => { stop(); onMain().then(resolve, reject); };
+    try {
+      const n = poolSize(count);
+      let done = 0, finished = 0, failed = false;
+      workers = Array.from({ length: n }, spawn);
+      workers.forEach((w, k) => {
+        w.onmessage = (e) => {
+          const m = e.data;
+          if (m.type === 'replicate') {
+            replicates[m.index] = m.values;
+            onProgress(++done / count);
+          } else if (m.type === 'done') {
+            if (++finished === n) { stop(); resolve(summarizeBootstrap(replicates, names)); }
+          } else if (m.type === 'error') { stop(); reject(new Error(m.message)); }
+        };
+        w.onerror = () => { if (!failed && !cancelled) { failed = true; fallback(); } };
+        const indices = Array.from({ length: count }, (_, i) => i).filter((i) => i % n === k);
+        w.postMessage({ type: 'bootstrap', request: lite, indices } satisfies WorkerRequest);
+      });
+    } catch {
+      fallback();
+    }
+  });
+  return { promise, cancel: () => { cancelled = true; stop(); } };
 }

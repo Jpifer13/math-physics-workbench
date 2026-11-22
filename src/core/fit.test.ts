@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { fitModel, interpolate, invert, nelderMead, parseTable, profileFit, residuals, runsTest } from './fit';
+import { bootstrapReplicate, fitModel, interpolate, invert, nelderMead, parseTable, profileFit, residuals, runsTest, summarizeBootstrap } from './fit';
 import { simulate, type OdeModel } from './ode';
+import { probit, seededRandom } from './sensitivity';
 
 const model: OdeModel = {
   id: 'damped', name: 'Damped oscillator', summary: '',
@@ -168,5 +169,113 @@ describe('model fitting', () => {
   it('explains why a fit cannot run', () => {
     expect(() => fitModel({ model, params: [], targets: [{ observable: 'x', t: [0, 1, 2], y: [1, 0, 1] }] })).toThrow(/at least one/);
     expect(() => fitModel({ model, params: ['k'], targets: [{ observable: 'nope', t: [0, 1, 2], y: [1, 0, 1] }] })).toThrow(/no values/);
+  });
+});
+
+describe('tied parameters and bootstrap', () => {
+  const decay: OdeModel = {
+    id: 'decay', name: 'Decay', summary: '',
+    states: [{ name: 'x', init: 'x0', deriv: '-k * x' }, { name: 'y', init: 'x0', deriv: '-k2 * y' }],
+    params: [
+      { name: 'x0', value: 1.5, min: 0, max: 5 },
+      { name: 'k', value: 0.5, min: 0, max: 3 },
+      { name: 'k2', value: 1, min: 0, max: 6 },
+    ],
+    derived: [], tEnd: 5, dt: 0.05, method: 'rk4', timeSeries: ['x'], phase: ['x', 'y'],
+  };
+  /** Both series measured at 60 times with Gaussian noise of known size; truth is x0 = 2, k = 0.8, k2 = 2k. */
+  const measured = (sigma = 0.02, seed = 4) => {
+    const truth = simulate(decay, { x0: 2, k: 0.8, k2: 1.6 });
+    const random = seededRandom(seed);
+    const t = Array.from({ length: 60 }, (_, i) => (5 * i) / 59);
+    const series = (name: string) => ({
+      observable: name, t, sigma: t.map(() => sigma),
+      y: t.map((ti) => interpolate(truth.t, truth.series[name], ti) + sigma * probit(random())),
+    });
+    return [series('x'), series('y')];
+  };
+
+  it('holds a tied parameter to its expression while fitting the rest', () => {
+    const targets = measured();
+    const fit = fitModel({ model: decay, params: ['x0', 'k'], targets, ties: { k2: '2 * k' } });
+    // Within three standard deviations of the truth, and the standard deviation is small.
+    expect(Math.abs(fit.values.k - 0.8)).toBeLessThan(3 * fit.errors.k);
+    expect(Math.abs(fit.values.x0 - 2)).toBeLessThan(3 * fit.errors.x0);
+    expect(fit.errors.k).toBeLessThan(0.01);
+    expect(Object.keys(fit.values)).toEqual(['x0', 'k']);
+    // The tie holds exactly, and its uncertainty is the free parameter's carried through it.
+    expect(fit.tied.k2).toBeCloseTo(2 * fit.values.k, 12);
+    expect(fit.tiedErrors.k2).toBeCloseTo(2 * fit.errors.k, 6);
+    expect(fit.reducedChi2!).toBeGreaterThan(0.6);
+    expect(fit.reducedChi2!).toBeLessThan(1.5);
+
+    // The second series now helps pin k down: tighter than fitting k from the first series alone.
+    const alone = fitModel({ model: decay, params: ['x0', 'k'], targets: [targets[0]] });
+    expect(fit.errors.k).toBeLessThan(alone.errors.k);
+
+    // A wrong tie cannot describe the data, and the misfit says so.
+    const wrong = fitModel({ model: decay, params: ['x0', 'k'], targets, ties: { k2: 'k' } });
+    expect(wrong.reducedChi2!).toBeGreaterThan(20);
+  });
+
+  it('follows the tie through a profile scan', () => {
+    const targets = measured();
+    const request = { model: decay, params: ['k'], targets, ties: { k2: '2 * k' } };
+    const fit = fitModel(request);
+    const [profile] = profileFit({ ...request, values: fit.values, errors: fit.errors });
+    const [lo, hi] = profile.interval;
+    expect((hi! - lo!) / 2).toBeCloseTo(fit.errors.k, 2);
+  });
+
+  it('explains a tie that cannot be used', () => {
+    const targets = measured();
+    expect(() => fitModel({ model: decay, params: ['k', 'k2'], targets, ties: { k2: '2 * k' } })).toThrow(/cannot also be free/);
+    expect(() => fitModel({ model: decay, params: ['k'], targets, ties: { k2: '2 * (k' } })).toThrow(/not a valid expression/);
+    expect(() => fitModel({ model: decay, params: ['k'], targets, ties: { k2: 'nothing + 1' } })).toThrow(/does not give a number/);
+    // A tie may not lean on another tied parameter.
+    expect(() => fitModel({ model: decay, params: ['k'], targets, ties: { k2: '2 * x0', x0: 'k2' } })).toThrow(/does not give a number/);
+    // An empty expression is no tie at all.
+    expect(fitModel({ model: decay, params: ['k', 'x0'], targets, ties: { k2: '  ' } }).tied).toEqual({});
+  });
+
+  it('bootstrap agrees with the linear uncertainty when the errors are well behaved', () => {
+    const targets = measured();
+    const request = { model: decay, params: ['x0', 'k'], targets, ties: { k2: '2 * k' } };
+    const fit = fitModel(request);
+    const replicates = Array.from({ length: 120 }, (_, i) => bootstrapReplicate({ ...request, values: fit.values, seed: 3 }, i));
+    const boot = summarizeBootstrap(replicates, ['x0', 'k', 'k2']);
+    expect(boot.failed).toBe(0);
+    expect(boot.used).toBe(120);
+    const linear: Record<string, number> = { ...fit.errors, ...fit.tiedErrors };
+    const best: Record<string, number> = { ...fit.values, ...fit.tied };
+    for (const s of boot.params) {
+      expect(s.sd / linear[s.param]).toBeGreaterThan(0.6);
+      expect(s.sd / linear[s.param]).toBeLessThan(1.6);
+      expect(s.lo95).toBeLessThan(best[s.param]);
+      expect(s.hi95).toBeGreaterThan(best[s.param]);
+      expect(s.lo68).toBeGreaterThan(s.lo95);
+      expect(s.hi68).toBeLessThan(s.hi95);
+    }
+    // The tie survives resampling in every replicate.
+    for (const r of replicates) expect(r!.k2).toBeCloseTo(2 * r!.k, 12);
+  });
+
+  it('draws each replicate from the seed and index alone', () => {
+    const targets = measured();
+    const request = { model: decay, params: ['k'], targets, values: { k: 0.8 }, seed: 9 };
+    expect(bootstrapReplicate(request, 5)).toEqual(bootstrapReplicate(request, 5));
+    expect(bootstrapReplicate(request, 5)).not.toEqual(bootstrapReplicate(request, 6));
+    expect(bootstrapReplicate({ ...request, seed: 10 }, 5)).not.toEqual(bootstrapReplicate(request, 5));
+  });
+
+  it('counts replicates whose refit failed and summarises the rest', () => {
+    const boot = summarizeBootstrap([{ k: 1 }, null, { k: 3 }, { k: 2 }], ['k']);
+    expect(boot.used).toBe(3);
+    expect(boot.failed).toBe(1);
+    expect(boot.params[0].median).toBe(2);
+    expect(boot.params[0].sd).toBe(1);
+    // A refit that cannot run at all is a failed replicate, not an exception.
+    const broken = { ...decay, states: [{ name: 'x', init: 'x0', deriv: 'nope' }] };
+    expect(bootstrapReplicate({ model: broken, params: ['k'], targets: measured().slice(0, 1), values: { k: 0.8 } }, 0)).toBeNull();
   });
 });

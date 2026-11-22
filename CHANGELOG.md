@@ -18,6 +18,12 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   a measurement with 68% and 95% intervals, a band around the observable over
   time, and Sobol first-order and total sensitivity indices with intervals.
   The analysis is saved with the simulation and recorded in CSV exports.
+- **Tied fit parameters.** In *Fit to data*, a parameter can follow an
+  expression in the others (`k2 = 2 * k`) instead of being fitted or fixed.
+  Its fitted value and uncertainty are reported with the rest.
+- **Bootstrap uncertainties.** Resamples the data and refits 200 times in
+  background threads, giving 68% and 95% intervals beside the linear estimate.
+- The fit setup (free parameters, ties, bounds) survives switching views.
 - Charts can draw shaded bands.
 - A `Makefile` for running, checking and building from the command line;
   `make doctor` reports which optional external tools are installed.
@@ -31,9 +37,10 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 
 ### Fixed
 
+- `npm test` no longer also runs the tests of repository copies in
+  subfolders (git worktrees).
 - macOS: quitting with unsaved changes and answering the prompt now quits the
   app. Before, the window closed and the app stayed running.
-
 - `package-lock.json` matches `package.json` again, so `npm install` no longer
   modifies it.
 

@@ -1,21 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { interpolate, parseTable, residuals, runsTest, type FitResult, type FitTarget, type Profile } from '../core/fit';
+import { interpolate, parseTable, residuals, runsTest, type BootstrapResult, type FitResult, type FitTarget, type Profile } from '../core/fit';
 import { simulate, type ModelData, type OdeModel, type SimResult } from '../core/ode';
 import { fmtNum } from '../core/units';
 import { importData } from '../documents';
 import { Plot, type Series } from '../components/Plot';
-import { runFit, runProfile, type Task } from './compute';
+import { runBootstrap, runFit, runProfile, type Task } from './compute';
 import { useSim } from './store';
 
 const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 const bare = (s: string) => s.toLowerCase().replace(/\s*[([].*$/, '').trim();
 
+/** Refits made by a bootstrap. */
+const REPLICATES = 200;
+
+interface Tie { name: string; expr: string }
+// The fit setup survives switching between views.
+let kept: { docVersion: number; chosen: string[]; bounded: boolean; ties: Tie[] } | null = null;
+
 /** Compare the model with measured data and fit its parameters by least squares. */
 export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
   const patch = useSim((s) => s.patch);
   const data = model.data;
-  const [chosen, setChosen] = useState<string[]>([]);
-  const [bounded, setBounded] = useState(false);
+  const docVersion = useSim((s) => s.docVersion);
+  const setup = kept?.docVersion === docVersion ? kept : null;
+  const [chosen, setChosen] = useState<string[]>(setup?.chosen ?? []);
+  const [bounded, setBounded] = useState(setup?.bounded ?? false);
+  const [ties, setTies] = useState<Tie[]>(setup?.ties ?? []);
+  useEffect(() => { kept = { docVersion, chosen, bounded, ties }; }, [docVersion, chosen, bounded, ties]);
+  /** The ties the current fit was made with: profiles and bootstraps must use the same ones. */
+  const [fitTies, setFitTies] = useState<Record<string, string>>({});
+  const [boot, setBoot] = useState<BootstrapResult | null>(null);
+  const [booting, setBooting] = useState<number | null>(null);
+  const bootTask = useRef<Task<BootstrapResult> | null>(null);
   const [fit, setFit] = useState<FitResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -23,15 +39,17 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
   const [profiling, setProfiling] = useState(false);
   const task = useRef<Task<FitResult> | null>(null);
   const profileTask = useRef<Task<Profile[]> | null>(null);
-  useEffect(() => () => { task.current?.cancel(); profileTask.current?.cancel(); }, []);
-  useEffect(() => { setProfiles(null); profileTask.current?.cancel(); setProfiling(false); }, [fit]);
+  useEffect(() => () => { task.current?.cancel(); profileTask.current?.cancel(); bootTask.current?.cancel(); }, []);
+  useEffect(() => {
+    setProfiles(null); profileTask.current?.cancel(); setProfiling(false);
+    setBoot(null); bootTask.current?.cancel(); setBooting(null);
+  }, [fit]);
 
   const startProfile = () => {
     if (!fit) return;
     // Profile around the fitted values, whether or not they have been applied yet.
-    const fitted = { ...model, params: model.params.map((p) => (p.name in fit.values ? { ...p, value: fit.values[p.name] } : p)) };
     setProfiling(true);
-    const t = runProfile({ model: fitted, params: Object.keys(fit.values), targets, bounded, values: fit.values, errors: fit.errors });
+    const t = runProfile({ model: withFit(fit), params: Object.keys(fit.values), targets, bounded, ties: fitTies, values: fit.values, errors: fit.errors });
     profileTask.current = t;
     t.promise.then(
       (r) => { if (profileTask.current === t) { setProfiles(r); setProfiling(false); } },
@@ -39,9 +57,30 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
     );
   };
 
+  const startBootstrap = () => {
+    if (!fit) return;
+    setBooting(0);
+    setMessage('');
+    const names = [...Object.keys(fit.values), ...Object.keys(fit.tied)];
+    const t = runBootstrap({ model: withFit(fit), params: Object.keys(fit.values), targets, bounded, ties: fitTies, values: fit.values }, REPLICATES, names, setBooting);
+    bootTask.current = t;
+    t.promise.then(
+      (r) => { if (bootTask.current === t) { setBoot(r); setBooting(null); } },
+      (err) => { if (bootTask.current === t) { setBooting(null); if (err?.message !== 'cancelled') setMessage(err instanceof Error ? err.message : String(err)); } },
+    );
+  };
+
+  /** Every value a fit settled: the free parameters and the ones tied to them. */
+  const settled = (f: FitResult): Record<string, number> => ({ ...f.values, ...f.tied });
+  /** The model with a fit's values in place, whether or not they have been applied yet. */
+  const withFit = (f: FitResult): OdeModel => ({ ...model, params: model.params.map((p) => (p.name in settled(f) ? { ...p, value: settled(f)[p.name] } : p)) });
+
   const observables = [...model.states.map((s) => s.name), ...model.derived.map((d) => d.name)];
   const unitOf = (n: string) => model.states.find((s) => s.name === n)?.unit ?? model.derived.find((d) => d.name === n)?.unit ?? '';
   const params = chosen.filter((n) => model.params.some((p) => p.name === n));
+  // A tie needs an expression, and a parameter that exists and is not being fitted.
+  const tieMap = Object.fromEntries(ties.filter((t) => t.expr.trim() && !params.includes(t.name) && model.params.some((p) => p.name === t.name)).map((t) => [t.name, t.expr]));
+  const tieable = model.params.filter((p) => !params.includes(p.name) && !ties.some((t) => t.name === p.name));
   const setData = (d: ModelData | undefined) => { patch({ data: d }); setFit(null); setMessage(''); };
 
   const doImport = async () => {
@@ -99,8 +138,8 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
   const mixedSigma = targets.some((t) => t.sigma) && !targets.every((t) => t.sigma);
 
   // The fitted curves are shown alongside the current model until the values are applied.
-  const fitted = useMemo(() => (fit ? simulate(model, fit.values) : null), [fit, model]);
-  const applied = !!fit && Object.entries(fit.values).every(([k, v]) => model.params.find((p) => p.name === k)?.value === v);
+  const fitted = useMemo(() => (fit ? simulate(model, { ...fit.values, ...fit.tied }) : null), [fit, model]);
+  const applied = !!fit && Object.entries(settled(fit)).every(([k, v]) => model.params.find((p) => p.name === k)?.value === v);
 
   const start = () => {
     if (!targets.length) return;
@@ -108,7 +147,8 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
     setBusy(true);
     setMessage('');
     setFit(null);
-    const t = runFit({ model, params, targets, bounded });
+    setFitTies(tieMap);
+    const t = runFit({ model, params, targets, bounded, ties: tieMap });
     task.current = t;
     t.promise.then(
       (r) => { if (task.current === t) { setFit(r); setBusy(false); } },
@@ -206,11 +246,33 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
           <div className="fit-params">
             {model.params.map((p) => (
               <label key={p.name} title={p.label}>
-                <input type="checkbox" checked={chosen.includes(p.name)} onChange={(e) => { setChosen(e.target.checked ? [...chosen, p.name] : chosen.filter((n) => n !== p.name)); }} />
+                <input type="checkbox" checked={chosen.includes(p.name)} onChange={(e) => {
+                  setChosen(e.target.checked ? [...chosen, p.name] : chosen.filter((n) => n !== p.name));
+                  // A parameter is either fitted or tied, not both.
+                  if (e.target.checked) setTies(ties.filter((t) => t.name !== p.name));
+                }} />
                 <code>{p.name}</code> <span className="muted">= {fmtNum(p.value, 5)}{p.unit ? ` ${p.unit}` : ''}</span>
               </label>
             ))}
             <label className="muted" title="Reject values outside each parameter's configured range"><input type="checkbox" checked={bounded} onChange={(e) => setBounded(e.target.checked)} /> keep within parameter ranges</label>
+          </div>
+          {ties.length > 0 && <div className="field-label">Tied to other parameters</div>}
+          {ties.map((tie, i) => (
+            <div key={i} className="tie-row">
+              <select value={tie.name} aria-label={`Tied parameter ${i + 1}`} onChange={(e) => setTies(ties.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}>
+                {model.params.filter((p) => p.name === tie.name || tieable.includes(p)).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+              </select>
+              <span className="muted">=</span>
+              <input
+                className="code" type="text" value={tie.expr} placeholder="an expression in the other parameters, e.g. 2 * k" aria-label={`Expression for ${tie.name}`}
+                onChange={(e) => setTies(ties.map((t, j) => (j === i ? { ...t, expr: e.target.value } : t)))} onKeyDown={(e) => e.stopPropagation()}
+              />
+              <button className="btn icon" title="Remove this tie" onClick={() => setTies(ties.filter((_, j) => j !== i))}>×</button>
+            </div>
+          ))}
+          <div className="tie-add">
+            <button className="btn small" disabled={!tieable.length} title={tieable.length ? '' : 'Every parameter is already fitted or tied'} onClick={() => setTies([...ties, { name: tieable[0].name, expr: '' }])}>+ Tie a parameter</button>
+            <span className="muted help">A tied parameter is neither fitted nor fixed: it follows its expression on every trial, so two quantities that must stay in a known relation do.</span>
           </div>
           {busy && <progress className="scan-progress" aria-label="Fitting" />}
 
@@ -277,6 +339,20 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
                       </tr>
                     );
                   })}
+                  {Object.entries(fit.tied).map(([name, v]) => {
+                    const p = model.params.find((q) => q.name === name);
+                    const before = applied ? undefined : p?.value;
+                    return (
+                      <tr key={name}>
+                        <td><code>{name}</code> <span className="muted">tied: = {fitTies[name]}</span></td>
+                        <td className="num">{before === undefined ? '—' : fmtNum(before, 7)}</td>
+                        <td className="num"><b>{fmtNum(v, 7)}</b></td>
+                        <td className="num">{Number.isFinite(fit.tiedErrors[name]) ? fmtNum(fit.tiedErrors[name], 2) : '—'}</td>
+                        <td className="num">{before === undefined || before === 0 ? '—' : `${((v / before - 1) * 100).toFixed(2)} %`}</td>
+                        <td className="muted">{p?.unit ?? ''}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {(() => {
@@ -301,7 +377,7 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
               })()}
               <div className="eq-actions" style={{ justifyContent: 'flex-start', marginTop: 10 }}>
                 {applied ? <span className="good">Fitted values applied to the model.</span> : (
-                  <button className="btn primary" onClick={() => patch({ params: model.params.map((p) => (p.name in fit.values ? { ...p, value: fit.values[p.name] } : p)) })}>Apply fitted values</button>
+                  <button className="btn primary" onClick={() => patch({ params: withFit(fit).params })}>Apply fitted values</button>
                 )}
               </div>
               <div className="profile-head">
@@ -339,6 +415,45 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
                   })}
                 </div>
               )}
+              <div className="profile-head">
+                <span className="field-label">Uncertainties by resampling the data</span>
+                {booting !== null ? <button className="btn small" onClick={() => { bootTask.current?.cancel(); setBooting(null); }}>Cancel</button>
+                  : <button className="btn small" onClick={startBootstrap}>{boot ? 'Bootstrap again' : `Bootstrap (${REPLICATES} refits)`}</button>}
+              </div>
+              {booting !== null && <progress className="scan-progress" value={booting} max={1} aria-label="Bootstrap progress" />}
+              {!boot && booting === null && <p className="muted help">Draws the data points again with replacement, refits, and repeats {REPLICATES} times. The spread of the refitted values is the uncertainty, with no assumption that the errors are normal or that the model is nearly linear in its parameters.</p>}
+              {boot && boot.used >= 20 && (() => {
+                const best = settled(fit);
+                const linear: Record<string, number> = { ...fit.errors, ...fit.tiedErrors };
+                const differs = boot.params.filter((b) => Number.isFinite(linear[b.param]) && linear[b.param] > 0 && (b.sd / linear[b.param] > 1.5 || b.sd / linear[b.param] < 1 / 1.5));
+                return (
+                  <>
+                    <table className="table compact">
+                      <thead><tr><th>Parameter</th><th className="num">Fitted</th><th className="num">Linear ± 1σ</th><th className="num">Resampled 68%</th><th className="num">Resampled 95% interval</th><th>Unit</th></tr></thead>
+                      <tbody>
+                        {boot.params.map((b) => (
+                          <tr key={b.param}>
+                            <td><code>{b.param}</code></td>
+                            <td className="num"><b>{fmtNum(best[b.param], 7)}</b></td>
+                            <td className="num">{Number.isFinite(linear[b.param]) ? `±${fmtNum(linear[b.param], 2)}` : '—'}</td>
+                            <td className="num">−{fmtNum(Math.max(0, best[b.param] - b.lo68), 2)} / +{fmtNum(Math.max(0, b.hi68 - best[b.param]), 2)}</td>
+                            <td className="num">{fmtNum(b.lo95, 6)} to {fmtNum(b.hi95, 6)}</td>
+                            <td className="muted">{model.params.find((q) => q.name === b.param)?.unit ?? ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {differs.length > 0 && (
+                      <div className="stale-note">
+                        For {differs.map((b) => b.param).join(', ')} the resampled spread is {differs.map((b) => `${fmtNum(b.sd / linear[b.param], 2)}×`).join(', ')} the linear estimate.
+                        Prefer the resampled interval: the linear one assumes errors of the stated size and a model that is nearly linear in its parameters.
+                      </div>
+                    )}
+                    {boot.failed > 0 && <p className="muted help warn">{boot.failed} of {boot.used + boot.failed} refits failed and are left out.</p>}
+                  </>
+                );
+              })()}
+              {boot && boot.used < 20 && <div className="readout error">Too few of the refits succeeded ({boot.used} of {boot.used + boot.failed}) to give an interval. The fit may be too fragile for these data.</div>}
               <p className="muted help">
                 Each parameter's configured range is surveyed first, then the best region is refined by Nelder–Mead simplex.{' '}
                 {fit.reducedChi2 !== undefined

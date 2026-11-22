@@ -72,9 +72,11 @@ view on the left and every edit re-runs immediately.
   their correlations, χ² per degree of freedom when error bars are given, a
   warning when the data cannot separate two parameters, per-series residuals
   (with a warning when they show systematic structure), and a button to apply
-  the result. *Profile the fit* then gives intervals that do not rely on the
-  linear approximation. The imported data is saved in the
-  simulation file.
+  the result. A parameter can be *tied* to others by an expression
+  (`k2 = 2 * k`), so it is neither fitted nor fixed but follows them. *Profile
+  the fit* then gives intervals that do not rely on the linear approximation,
+  and *Bootstrap* gives them by resampling the data and refitting 200 times.
+  The imported data is saved in the simulation file.
 - **Undo / redo** for every edit to a simulation or a flow.
 - **Export** — any run or experiment as CSV at full double precision, with a
   header recording the app version, model, parameters and solver that produced
