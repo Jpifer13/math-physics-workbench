@@ -7,7 +7,7 @@ import { currentDoc, markSaved, useFlow } from './flow/store';
 import { createHistory, type History } from './history';
 import type { FlowDoc } from './flow/types';
 import { useNav } from './nav';
-import { saveFile } from './saveFile';
+import { deliver, saveFile } from './saveFile';
 import { APP_VERSION, FILE_FORMAT } from './version';
 import { blankModel, isModel, markSimSaved, useSim } from './sim/store';
 import { useScratch } from './scratch/store';
@@ -151,14 +151,6 @@ export async function openDocument() {
   input.click();
 }
 
-function download(text: string, fileName: string, type: string) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
 export async function saveDocument(kind: DocKind, saveAs = false) {
   const k = KINDS[kind];
   const text = k.serialize();
@@ -172,8 +164,8 @@ export async function saveDocument(kind: DocKind, saveAs = false) {
     }
     return;
   }
-  download(text, `${(k.name() || 'untitled').replace(/[^\w-]+/g, '-').toLowerCase()}.${k.ext}`, 'application/json');
-  k.mark(filePath);
+  const saved = await deliver(new Blob([text], { type: 'application/json' }), `${(k.name() || 'untitled').replace(/[^\w-]+/g, '-').toLowerCase()}.${k.ext}`);
+  if (saved) k.mark(filePath);
 }
 
 /** Export tabular data as CSV. Resolves to a short confirmation, or '' if cancelled. */

@@ -27,6 +27,38 @@ offline cache on secure pages, so for a home-screen app that opens without a
 connection, put `dist-web/` on an HTTPS host (GitHub Pages, Netlify, your own
 server) and then use Share → Add to Home Screen.
 
+## The native iPad app
+
+The same web build can be packaged as a real iPad app with
+[Capacitor](https://capacitorjs.com). The Xcode project lives in `ios/`. The
+app carries the interface and the handwriting model inside its bundle, so it
+needs no hosting and works offline from the first launch.
+
+```bash
+npm run setup:handwriting   # once, if the app should read handwriting
+npm run build:ios           # builds dist-web/ and copies it into the Xcode project
+npm run open:ios            # opens ios/App/App.xcodeproj in Xcode
+```
+
+In Xcode, choose an iPad simulator or a connected iPad and press Run. For a
+real device, select the App target → Signing & Capabilities, tick
+"Automatically manage signing" and pick your team; the bundle identifier is
+`io.physicstooling.app`. From the command line, for a simulator:
+
+```bash
+xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator \
+  -destination "platform=iOS Simulator,name=iPad Air 11-inch (M4)" -derivedDataPath build/ios build
+xcrun simctl boot "iPad Air 11-inch (M4)"
+xcrun simctl install booted build/ios/Build/Products/Debug-iphonesimulator/App.app
+xcrun simctl launch booted io.physicstooling.app
+```
+
+Run `npm run build:ios` again after any change to the interface; the copy of
+the web files inside `ios/` is generated and not kept in the repository.
+
+In the app, Save and Export open the share sheet (choose "Save to Files"),
+because a web view has no downloads. Open uses the system file picker.
+
 ## The Scratchpad
 
 A page to write mathematics on with a pen. Each written line is read, typeset
@@ -119,6 +151,14 @@ Also checked in Safari on the iPad Air 11-inch simulator (iPadOS 27.0), with
 strokes loaded into the page rather than drawn: the model loads and reads them
 correctly. The simulator borrows the Mac's memory and processor, so this says
 nothing about memory limits or speed on a tablet.
+
+The native app was built and run on the same simulator: it launches, the
+simulation workspace runs, and the model loads from the app bundle and reads
+pre-loaded strokes correctly.
+
+**Not checked in the native app:** the share sheet for Save and Export
+(written, never tapped through), opening a file, signing and installing on a
+device, TestFlight and App Store submission.
 
 **Not checked: a real iPad.** In particular: Apple Pencil pressure and palm
 rejection, whether the model fits in Safari's memory on older iPads (it uses a
