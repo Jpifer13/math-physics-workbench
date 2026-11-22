@@ -6,11 +6,22 @@ export interface OpenedFile {
 export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math';
 export type DocExt = 'physsim' | 'physflow';
 
+/** A separately installed program that can run generated scripts. */
+export interface EngineInfo {
+  id: string;
+  name: string;
+  path: string | null;
+  custom: boolean;
+}
+
 export interface DesktopApi {
   platform: string;
   openDocument(): Promise<OpenedFile | null>;
   saveDocument(text: string, filePath: string | null, suggestedName: string, ext: DocExt): Promise<string | null>;
-  exportFile(text: string, suggestedName: string, ext: 'csv'): Promise<string | null>;
+  exportFile(text: string, suggestedName: string, ext: 'csv' | 'py' | 'm' | 'wl' | 'jl'): Promise<string | null>;
+  listEngines(): Promise<EngineInfo[]>;
+  locateEngine(id: string): Promise<string | null>;
+  runEngine(id: string, code: string): Promise<{ ok: boolean; csv?: string; log: string; ms?: number; program?: string }>;
   importData(): Promise<OpenedFile | null>;
   setDirty(names: string[]): void;
   closeWindow(): void;

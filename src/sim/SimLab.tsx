@@ -3,6 +3,7 @@ import { simulate } from '../core/ode';
 import { Definition } from './Definition';
 import { ExperimentView } from './ExperimentView';
 import { FitView } from './FitView';
+import { ToolsView } from './ToolsView';
 import { RunView } from './RunView';
 import { useSim } from './store';
 
@@ -10,6 +11,7 @@ const VIEWS = [
   { id: 'run', name: 'Run', hint: 'Integrate the system once and inspect it' },
   { id: 'experiment', name: 'Experiment', hint: 'Scan one or two parameters and measure the response' },
   { id: 'fit', name: 'Fit to data', hint: 'Import measurements and fit the model\'s parameters to them' },
+  { id: 'tools', name: 'Other software', hint: 'Export the model as code, or run it in MATLAB, Python, Mathematica or Julia and compare' },
 ] as const;
 
 /** The simulation workspace: model definition on the left, results on the right. */
@@ -34,7 +36,7 @@ export function SimLab() {
         </div>
         {notice && <div className="notice" role="alert">{notice} <button className="link" onClick={() => useSim.setState({ notice: '' })}>Dismiss</button></div>}
         {run.error && <div className="notice" role="alert"><b>Model error.</b> {run.error}</div>}
-        {view === 'run' ? <RunView model={model} run={run} /> : view === 'experiment' ? <ExperimentView model={model} run={run} /> : <FitView model={model} run={run} />}
+        {view === 'run' ? <RunView model={model} run={run} /> : view === 'experiment' ? <ExperimentView model={model} run={run} /> : view === 'fit' ? <FitView model={model} run={run} /> : <ToolsView model={model} run={run} />}
       </main>
     </div>
   );

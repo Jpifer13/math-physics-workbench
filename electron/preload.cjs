@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld('desktop', {
   saveDocument: (text, filePath, suggestedName, ext) => ipcRenderer.invoke('doc:save', text, filePath, suggestedName, ext),
   /** Export data (e.g. CSV) through a Save dialog. Resolves to the path, or null. */
   exportFile: (text, suggestedName, ext) => ipcRenderer.invoke('export:save', text, suggestedName, ext),
+  /** Other scientific software installed on this computer: [{ id, name, path, custom }]. */
+  listEngines: () => ipcRenderer.invoke('engine:list'),
+  /** Ask the user where a program lives. Resolves to the chosen path, or null. */
+  locateEngine: (id) => ipcRenderer.invoke('engine:locate', id),
+  /** Run a generated script in an installed program. Resolves to { ok, csv?, log, ms? }. */
+  runEngine: (id, code) => ipcRenderer.invoke('engine:run', id, code),
   /** Pick a data table (CSV etc.) to import. Resolves to { path, text } or null. */
   importData: () => ipcRenderer.invoke('import:open'),
   /** Report which documents have unsaved changes, so closing the window can ask first. */

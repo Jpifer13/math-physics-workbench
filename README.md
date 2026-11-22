@@ -4,6 +4,10 @@ A desktop virtual laboratory for physicists and mathematicians: define a
 dynamical system, integrate it, and run numerical experiments on it — then
 export the data.
 
+It is open source and stands on its own. If you also have MATLAB, Mathematica,
+Python or Julia, it can export a model as a script for any of them, run it
+there, and compare the answers.
+
 ![Parameter-scan experiment: resonance curve of a driven oscillator](docs/simulation-experiment.png)
 
 ## What's in it
@@ -52,6 +56,10 @@ view on the left and every edit re-runs immediately.
   simulation file.
 - **Undo / redo** for every edit to a simulation or a flow.
 - **Export** — any run or experiment as CSV at full double precision.
+- **Other software** — export the model as a script for Python (SciPy), MATLAB
+  or Octave, Mathematica, or Julia; or run it in one you have installed and
+  compare the result with this app's own, as an independent check. See
+  [Working with other software](docs/integrations.md).
 - **Templates** — projectile with drag, bouncing ball, pendulum, driven damped oscillator,
   Kepler orbit, Lorenz system, charge in E and B fields, Van der Pol
   oscillator, RLC circuit, coupled oscillators. Each is a starting point, not a fixed demo.
@@ -59,6 +67,8 @@ view on the left and every edit re-runs immediately.
 Simulations save as `.physsim` (plain JSON).
 
 ![Fitting two series with error bars](docs/simulation-fit.png)
+
+![Exporting a model to Python and comparing the two solutions](docs/other-software.png)
 
 ![A bouncing ball: discrete events resetting the state](docs/simulation-events.png)
 
@@ -117,6 +127,9 @@ npm start          # build, then launch the app as it will ship
 npm test           # unit tests
 ```
 
+The tests that check exported scripts run only where the relevant program is
+installed (Python with SciPy, GNU Octave) and skip themselves elsewhere.
+
 ### Building an installer
 
 ```bash
@@ -168,6 +181,7 @@ src/
   desktop.ts    Typed view of that bridge
   documents.ts  New / Open / Save / export for both document kinds
   history.ts    Undo / redo with coalesced edits
+  integrations/ Code export for Python, MATLAB/Octave, Mathematica and Julia
   core/         Framework-free engine (unit tested, no React)
     units.ts      SI dimension vectors, unit table, constants, formatting
     qmath.ts      Arithmetic on dimensional quantities, with unit errors
@@ -230,6 +244,32 @@ What the tool is built for, and where it stops:
   from a flow arrive in SI units.
 - Installers are unsigned until certificates are supplied (see *Signing the
   installers*).
+
+## Licence
+
+Physics Tooling is free software under the **GNU Affero General Public License,
+version 3 or later** (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). Copyright
+© 2026 Pifer Labs LLC.
+
+In plain terms:
+
+- Anyone may use, study, change and share it, for any purpose.
+- Anyone who distributes a changed version — or offers one to others as a
+  hosted service — must make their source available under the same licence.
+  That is what stops someone wrapping it in a closed product: a wrapper built
+  on this code has to be open as well.
+- It does not forbid charging money. Someone could sell a copy or a support
+  contract, but only while passing on the same freedoms and the source.
+- **Your work is yours.** Models, data, figures and exported scripts are not
+  covered by the licence.
+
+Coupling with proprietary tools such as MATLAB and Mathematica is unaffected:
+those programs run separately, are never bundled, and remain under their own
+licences.
+
+*This is a summary, not legal advice. A licence that forbids commercial use
+outright would not be open source; if that stronger restriction is what is
+wanted, it is a different kind of licence and worth a lawyer's review.*
 
 ## Roadmap
 

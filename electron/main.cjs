@@ -4,7 +4,9 @@
  * narrow, dialog-gated API exposed in preload.cjs.
  */
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { execFile } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -13,6 +15,10 @@ const DOC_TYPES = {
   physsim: { name: 'Physics simulation', extensions: ['physsim'] },
   physflow: { name: 'Physics equation flow', extensions: ['physflow'] },
   csv: { name: 'Comma-separated values', extensions: ['csv'] },
+  py: { name: 'Python script', extensions: ['py'] },
+  m: { name: 'MATLAB / Octave script', extensions: ['m'] },
+  wl: { name: 'Wolfram Language script', extensions: ['wl'] },
+  jl: { name: 'Julia script', extensions: ['jl'] },
 };
 const OPEN_FILTERS = [
   { name: 'Physics Tooling documents', extensions: ['physsim', 'physflow', 'json'] },
@@ -79,7 +85,7 @@ ipcMain.handle('doc:open', async () => {
 ipcMain.handle('doc:save', async (_e, text, filePath, suggestedName, ext) => {
   if (typeof text !== 'string') throw new Error('Nothing to save');
   const type = DOC_TYPES[ext];
-  if (!type || ext === 'csv') throw new Error('Unknown document type');
+  if (!type || !['physsim', 'physflow'].includes(ext)) throw new Error('Unknown document type');
   let target = typeof filePath === 'string' && approvedPaths.has(filePath) ? filePath : null;
   if (!target) {
     const r = await dialog.showSaveDialog(win, {
@@ -122,6 +128,88 @@ ipcMain.handle('export:save', async (_e, text, suggestedName, ext) => {
   await fs.promises.writeFile(r.filePath, text, 'utf8');
   return r.filePath;
 });
+
+// ------------------------------------------------- external engines
+// Other scientific software the user has installed. Physics Tooling never ships or
+// requires any of these; it only runs a script it generated, in a scratch folder.
+const ENGINES = {
+  python: { name: 'Python', commands: ['python3', 'python'], script: 'physics_model.py', args: (f) => [f] },
+  octave: { name: 'GNU Octave', commands: ['octave-cli', 'octave'], script: 'physics_model.m', args: (f) => ['--no-gui', '--quiet', f] },
+  matlab: { name: 'MATLAB', commands: ['matlab'], script: 'physics_model.m', args: () => ['-batch', 'physics_model'] },
+  mathematica: { name: 'Mathematica / Wolfram Engine', commands: ['wolframscript'], script: 'physics_model.wl', args: (f) => ['-file', f, 'result.csv'] },
+  julia: { name: 'Julia', commands: ['julia'], script: 'physics_model.jl', args: (f) => [f] },
+};
+const enginesFile = () => path.join(app.getPath('userData'), 'engines.json');
+function customEngines() {
+  try {
+    const v = JSON.parse(fs.readFileSync(enginesFile(), 'utf8'));
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+/** Find a program on PATH (plus the usual install locations a GUI app's PATH can miss). */
+function findOnPath(command) {
+  const extra = process.platform === 'win32' ? [] : ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', path.join(os.homedir(), '.juliaup', 'bin')];
+  const dirs = [...String(process.env.PATH || '').split(path.delimiter), ...extra].filter(Boolean);
+  const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const full = path.join(dir, command + ext);
+      try {
+        fs.accessSync(full, fs.constants.X_OK);
+        if (fs.statSync(full).isFile()) return full;
+      } catch {
+        /* not here */
+      }
+    }
+  }
+  return null;
+}
+function enginePath(id) {
+  const custom = customEngines()[id];
+  if (typeof custom === 'string' && fs.existsSync(custom)) return { path: custom, custom: true };
+  for (const c of ENGINES[id].commands) {
+    const found = findOnPath(c);
+    if (found) return { path: found, custom: false };
+  }
+  return { path: null, custom: false };
+}
+
+ipcMain.handle('engine:list', () => Object.keys(ENGINES).map((id) => ({ id, name: ENGINES[id].name, ...enginePath(id) })));
+
+ipcMain.handle('engine:locate', async (_e, id) => {
+  if (!ENGINES[id]) throw new Error('Unknown program');
+  const r = await dialog.showOpenDialog(win, { title: `Locate ${ENGINES[id].name}`, properties: ['openFile'] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  fs.writeFileSync(enginesFile(), JSON.stringify({ ...customEngines(), [id]: r.filePaths[0] }, null, 2));
+  return r.filePaths[0];
+});
+
+ipcMain.handle('engine:run', (_e, id, code) => new Promise((resolve) => {
+  const engine = ENGINES[id];
+  const exe = engine ? enginePath(id).path : null;
+  if (!engine || typeof code !== 'string') return resolve({ ok: false, log: 'Unknown program' });
+  if (!exe) return resolve({ ok: false, log: `${engine.name} was not found on this computer` });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'physics-tooling-'));
+  const cleanup = () => fs.rm(dir, { recursive: true, force: true }, () => {});
+  const started = Date.now();
+  fs.writeFileSync(path.join(dir, engine.script), code, 'utf8');
+  // No shell: the program is started directly with a fixed argument list.
+  execFile(exe, engine.args(engine.script), { cwd: dir, timeout: 5 * 60 * 1000, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+    const log = `${stdout || ''}${stderr || ''}`.trim().slice(-4000);
+    let csv = null;
+    try {
+      csv = fs.readFileSync(path.join(dir, 'result.csv'), 'utf8');
+    } catch {
+      /* the script did not produce a result */
+    }
+    cleanup();
+    if (err && !csv) return resolve({ ok: false, log: log || (err.killed ? 'Timed out after 5 minutes' : String(err.message)) });
+    if (!csv) return resolve({ ok: false, log: log || 'The script finished without writing a result' });
+    resolve({ ok: true, csv, log, ms: Date.now() - started, program: exe });
+  });
+}));
 
 // Unsaved-changes guard: the UI reports which documents are dirty; closing asks first.
 let dirtyDocs = [];

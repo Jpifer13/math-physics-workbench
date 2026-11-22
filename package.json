@@ -34,7 +34,7 @@
   },
   "productName": "Physics Tooling",
   "description": "A virtual laboratory for building simulations and running numerical experiments.",
-  "author": "Physics Tooling",
+  "author": "Pifer Labs LLC",
   "main": "electron/main.cjs",
   "build": {
     "appId": "io.physicstooling.app",
@@ -42,7 +42,9 @@
     "files": [
       "dist/**",
       "electron/**",
-      "package.json"
+      "package.json",
+      "LICENSE",
+      "NOTICE"
     ],
     "directories": {
       "output": "release",
@@ -79,11 +81,13 @@
         "AppImage",
         "deb"
       ],
-      "maintainer": "Physics Tooling"
+      "maintainer": "Pifer Labs LLC"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
-  }
+    },
+    "copyright": "Copyright (C) 2026 Pifer Labs LLC"
+  },
+  "license": "AGPL-3.0-or-later"
 }

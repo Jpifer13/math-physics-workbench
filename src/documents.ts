@@ -166,6 +166,18 @@ export async function exportCsv(text: string, suggestedName: string): Promise<st
   return 'Exported';
 }
 
+/** Save a generated script through the Save dialog (or as a download in the browser). */
+export async function exportScript(text: string, suggestedName: string, ext: 'py' | 'm' | 'wl' | 'jl'): Promise<string> {
+  // Script names double as identifiers in some languages, so keep them plain.
+  const name = suggestedName.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'model';
+  if (desktop) {
+    const saved = await desktop.exportFile(text, name, ext);
+    return saved ? `Saved ${baseName(saved)}` : '';
+  }
+  download(text, `${name}.${ext}`, 'text/plain');
+  return 'Saved';
+}
+
 /** The document kind the File menu acts on for the current workspace. */
 export const activeKind = (): DocKind | null => {
   const tab = useNav.getState().tab;

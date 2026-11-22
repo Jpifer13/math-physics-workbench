@@ -38,7 +38,8 @@ themselves whether the answer has converged.
   step) and report, per variable, how much the answer moved; flag variables
   that have not converged.
 - *Cross-solver check:* one click runs the model with a second method and
-  overlays the difference.
+  overlays the difference. (Partly delivered: "Run and compare" already does
+  this against Python, Octave, MATLAB, Mathematica or Julia where installed.)
 - *Invariant monitor:* mark an observable as "should be conserved" and report
   its drift — labelled as a necessary check, not proof of accuracy.
 
@@ -130,15 +131,11 @@ pointing out that switching tools is never free.
 *Evidence: commentary and forum discussion ([reproducible MATLAB][repro-matlab],
 [The Scientist][scientist], [opensource.com][oss-research]) — anecdotal.*
 
-**Today.** File formats are plain JSON and data exports are CSV, which is a
-good start. But a model built here can only be run here, and the repository
-has no licence file, so its own terms of use are undefined.
-
-**Proposal — a way out, and a stated licence (S–M).**
-- Export a simulation as a runnable Python script (SciPy `solve_ivp`), with
-  events and parameters included, so a result can be reproduced without this
-  app.
-- Choose and add a licence. **This needs a decision from the owner.**
+**Status: done.** The project is licensed under AGPL-3.0-or-later. Any
+simulation can be exported as a runnable script for Python (SciPy),
+MATLAB/Octave, Mathematica or Julia, so a result can be reproduced without this
+app; the Python and Octave paths are verified by the test suite, the other two
+are not yet. See [Working with other software](integrations.md).
 
 ---
 
