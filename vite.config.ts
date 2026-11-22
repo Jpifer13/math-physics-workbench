@@ -1,4 +1,5 @@
-import { defineConfig, type Plugin } from 'vite';
+import type { Plugin } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import pkg from './package.json' with { type: 'json' };
 
@@ -32,4 +33,6 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   // Relative asset paths so the build works when loaded from the app bundle (file://).
   base: './',
+  // Only this checkout's tests: copies of the repository can sit in subfolders (git worktrees).
+  test: { include: ['src/**/*.test.ts'] },
 });
