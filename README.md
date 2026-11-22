@@ -145,6 +145,14 @@ wire outputs into inputs, and end with a Result block.
 
 ![Dipole field with traced field lines](docs/vector-field.png)
 
+### Scratchpad
+
+Write mathematics with a pen and have it read and worked out: arithmetic,
+variables, equations with one unknown, integrals and sums. Differential
+equations written by hand open as a simulation. Made for tablets; see
+[docs/tablet.md](docs/tablet.md) for the iPad build and how handwriting is
+read.
+
 ## Running it
 
 Requires Node 20 or newer.

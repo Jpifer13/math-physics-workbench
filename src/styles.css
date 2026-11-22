@@ -508,3 +508,85 @@ ul.howto { padding-left: 18px; }
 .swatch.bar { background: currentColor; margin-right: 5px; vertical-align: middle; }
 .bar-label { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; fill: var(--text-secondary); }
 .bar-whisker { stroke: var(--text); stroke-width: 1.2; fill: none; }
+
+/* -------------------------------------------------------------- scratchpad */
+.scratch { display: flex; flex-direction: column; height: 100%; }
+.scratch-bar { flex-wrap: wrap; row-gap: 6px; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); height: 26px; padding: 0 12px; cursor: pointer; font-weight: 600; color: var(--text-secondary); }
+.seg button + button { border-left: 1px solid var(--border-strong); }
+.seg button.on { background: var(--accent-soft); color: var(--text); }
+.check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); white-space: nowrap; }
+.scratch-status { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.scratch-status.bad { color: var(--danger); }
+.scratch-body { display: grid; grid-template-columns: minmax(0, 1fr) 330px; flex: 1; min-height: 0; }
+
+.ink-page {
+  position: relative; overflow: hidden; background: var(--surface); cursor: crosshair; min-height: 0;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.ink-page.rubbing { cursor: cell; }
+.ink-page canvas { position: absolute; left: 0; top: 0; display: block; pointer-events: none; }
+.ink-over { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; }
+.ink-hint { position: absolute; left: 28px; top: 34px; max-width: 420px; display: grid; gap: 8px; color: var(--text-muted); line-height: 1.45; }
+.ink-hint b { color: var(--text-secondary); font-size: 15px; }
+.ink-answer { position: absolute; transform: translateY(-50%); white-space: nowrap; color: var(--accent); }
+.ink-answer.check { color: var(--tone-output); }
+.ink-answer.symbolic { color: var(--tone-constant); }
+.ink-answer.bad {
+  color: var(--danger); font-family: inherit; font-weight: 700; font-size: 13px !important; width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid currentColor; display: grid; place-items: center;
+}
+.ink-answer.reading { color: var(--text-muted); animation: ink-pulse 1.1s ease-in-out infinite; }
+@keyframes ink-pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .ink-answer.reading { animation: none; } }
+
+.scratch-side { background: var(--surface-2); border-left: 1px solid var(--border); overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.scratch-side .panel-subtitle { margin: 4px 0 0; }
+.scratch-line { display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.scratch-line.bad { border-color: #e6b8bc; }
+.scratch-num {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface-2);
+  color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 0;
+}
+.scratch-line-body { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.scratch-read { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.scratch-read > :first-child { min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.scratch-read .link { flex: none; font-size: 12px; }
+.scratch-result { color: var(--accent); overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.scratch-result.check { color: var(--tone-output); }
+.scratch-result.symbolic { color: var(--tone-constant); }
+.scratch-note { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.scratch-note.attention { color: var(--danger); }
+.scratch-line-body input { width: 100%; }
+.scratch-edit-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.scratch-model p, .scratch-settings small { line-height: 1.45; }
+.scratch-problem { color: var(--danger); margin: 0; }
+.scratch-settings { display: grid; gap: 10px; }
+.scratch-settings h3 { margin-bottom: 0; }
+.radio { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.radio input { margin-top: 3px; accent-color: var(--accent); }
+.radio span { display: grid; gap: 2px; }
+.radio small, .scratch-service small { color: var(--text-muted); font-size: 12px; }
+.scratch-service { display: grid; gap: 4px; padding-left: 22px; }
+.scratch-service .field { margin-bottom: 4px; }
+
+@media (max-width: 900px) {
+  /* Portrait tablet: the page on top, what it says underneath. */
+  .scratch-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(120px, 38%); }
+  .scratch-side { border-left: 0; border-top: 1px solid var(--border); }
+}
+
+/* ---------------------------------------------------------- touch screens */
+@media (pointer: coarse) {
+  /* Fingers need bigger targets than a mouse pointer does. */
+  .btn, .seg button { height: 36px; padding: 0 14px; }
+  .btn.small { height: 32px; }
+  .btn.icon { width: 34px; height: 34px; }
+  input:not([type]), input[type='text'], input[type='search'], input[type='password'], select { height: 36px; }
+  .tabs button { padding: 0 12px; }
+  .subtabs button { padding: 12px 14px 10px; }
+  .chip { height: 32px; padding: 0 12px; }
+  .scratch-num { width: 30px; height: 30px; }
+  input[type='checkbox'], input[type='radio'] { width: 18px; height: 18px; }
+}

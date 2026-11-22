@@ -117,6 +117,16 @@ describe('the notebook', () => {
     expect(value('2 + 2 = 5').message).toMatch(/not equal/);
   });
 
+  it('takes look-alike capital and small letters to be the same when only one has a value', () => {
+    const nb = run('X = 4', '3x + 1 =');
+    expect(nb.lines[1].value).toBe(13);
+    expect(nb.lines[1].message).toMatch(/x and X to be the same letter/);
+    // Both given values: they are different quantities and stay so.
+    expect(value('V = 10', 'v = 2', 'V v =').value).toBe(20);
+    // Letters that do not look alike are never merged.
+    expect(value('A = 4', '3a + 1 =').kind).toBe('symbolic');
+  });
+
   it('defines and uses functions', () => {
     expect(value('f(x) = x^2 + 1', 'f(3) =').value).toBe(10);
     expect(run('f(2) + 1 =', 'f(x) = 3x').lines[0].value).toBe(7); // used above its definition

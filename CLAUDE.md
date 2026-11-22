@@ -20,6 +20,9 @@ npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
 npm run dist         # installer for the current OS
 npm run dev:web      # UI only, in a browser — no file dialogs or external tools
+npm run build:web    # static site for tablets/browsers into dist-web/ (docs/tablet.md)
+npm run serve:web    # serve dist-web/ on the local network
+npm run setup:handwriting   # fetch the on-device handwriting model into public/ (git-ignored)
 ```
 
 The `Makefile` wraps these (`make` lists the targets). Two are worth knowing:
@@ -51,6 +54,9 @@ src/core/              Engine. No React, no DOM. Everything here is unit-tested.
   dimcheck.ts            Unit parsing and dimensional checking of models
   units.ts, qmath.ts     Dimensioned quantities (used by Equation Flows)
   graph.ts, formula.ts, expr.ts   Flow-graph evaluation and symbolic output
+  latexMath.ts           Reads LaTeX (recogniser output) into a syntax tree
+  scratch.ts             The scratchpad notebook: evaluate, solve, build an OdeModel
+  ink.ts                 Pen strokes: grouping into written lines, erasing
 src/sim/               Simulations workspace (the main one)
   store.ts               zustand store for the open simulation
   Definition.tsx         Left panel: the model editor
@@ -58,6 +64,9 @@ src/sim/               Simulations workspace (the main one)
   compute.ts, worker.ts  Web-worker pool for scans, fits and profiles
   models.ts              Templates
 src/flow/              Equation Flows workspace (React Flow node editor)
+src/scratch/           Scratchpad workspace: pen canvas, readings, answers
+src/recognize/         Handwriting recognition: on-device model (in a worker),
+                       or a user-chosen service; rasterising ink
 src/mathtools/         Grapher, 3D surfaces, vector fields, units
 src/integrations/      Code export: python.ts, matlab.ts, mathematica.ts, julia.ts
 src/components/        Plot (SVG), Heatmap, Plot3D (three.js, lazy), Tex, …
@@ -97,6 +106,14 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   re-emits expressions from the syntax tree against a whitelist; that is what
   stops a shared model file injecting code into a script that then gets run.
   Keep every new generator on `translate()`.
+- **Recognised handwriting is untrusted text too.** `core/latexMath.ts` parses
+  it to a tree and `toMathText` re-emits from that tree; model expressions
+  built from the scratchpad never contain recogniser output verbatim.
+- **Two security policies.** `vite.config.ts` builds the desktop UI with
+  `connect-src 'none'` and the web build (`TARGET=web`) with `'self'` plus
+  `'wasm-unsafe-eval'` for the handwriting model. Extra origins come only from
+  `RECOGNITION_ORIGINS` at build time. Test the scratchpad against
+  `npm run build:web`, not `dev`.
 - **External programs** are started by `electron/main.cjs` with `execFile`
   (no shell) from a fixed table. Adding one means an entry there plus a
   generator; see "Adding another target" in `docs/integrations.md`.
@@ -155,7 +172,18 @@ unpackaged (`npm start`), every view renders, 3D works on a real GPU, the
 Python and Octave export tests pass, and "Run and compare" works with Python.
 `CHANGELOG.md` records changes from here on; add an entry with each change.
 
+Scratchpad and web build, checked 2026-11-22 with scripted WebKit and
+Chromium on macOS (simulated pointer strokes, production build): model loads,
+lines are read and answered, portrait and landscape layouts hold.
+
 **Not verified — treat as untested:**
+- The web build on a real iPad or Android tablet: Apple Pencil input, palm
+  rejection, model memory use in Safari, offline install, recognition quality
+  on real handwriting.
+- The "service I choose" recognition path: written, never run against a
+  service.
+- Handwriting recognition in the desktop app: not wired up (the model is not
+  loaded from `file://`), so the Scratchpad there is type-in only.
 - Mathematica and Julia export: generated, never run against a real install.
 - MATLAB itself: the `.m` export is verified in GNU Octave only.
 - macOS and Windows packaging (`npm run dist`): only Linux has been exercised.

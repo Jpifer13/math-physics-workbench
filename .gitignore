@@ -3,3 +3,6 @@ dist
 *.log
 .DS_Store
 release
+dist-web
+public/models
+public/ort

@@ -10,6 +10,8 @@ import { useNav } from './nav';
 import { saveFile } from './saveFile';
 import { APP_VERSION, FILE_FORMAT } from './version';
 import { blankModel, isModel, markSimSaved, useSim } from './sim/store';
+import { useScratch } from './scratch/store';
+import type { OdeModel } from './core/ode';
 
 export type DocKind = 'sim' | 'flow';
 
@@ -63,6 +65,7 @@ export function undoRedo(direction: 'undo' | 'redo') {
     document.execCommand(direction);
     return;
   }
+  if (useNav.getState().tab === 'scratch') return useScratch.getState()[direction]();
   const kind = activeKind();
   if (kind) histories[kind][direction]();
 }
@@ -116,6 +119,15 @@ export function newDocument(kind: DocKind) {
   KINDS[kind].mark(null);
   histories[kind].reset();
   useNav.getState().setTab(kind);
+}
+
+/** Open a model made elsewhere in the app (the scratchpad) as a new, unsaved simulation. */
+export function openGeneratedModel(model: OdeModel) {
+  if (!confirmDiscard('sim')) return;
+  KINDS.sim.mark(null);
+  useSim.getState().load(model);
+  histories.sim.reset();
+  useNav.getState().setTab('sim');
 }
 
 export async function openDocument() {
@@ -179,7 +191,7 @@ export async function exportScript(text: string, suggestedName: string, ext: 'py
 /** The document kind the File menu acts on for the current workspace. */
 export const activeKind = (): DocKind | null => {
   const tab = useNav.getState().tab;
-  return tab === 'math' ? null : tab;
+  return tab === 'sim' || tab === 'flow' ? tab : null;
 };
 
 /** Pick a data table to import. Resolves to its name and text, or null if cancelled. */

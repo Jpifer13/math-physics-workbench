@@ -24,7 +24,13 @@ Third-party software
 Physics Tooling is built on open-source components, each under its own
 licence, including Electron, React, React Flow, three.js, KaTeX and zustand
 (MIT) and mathjs (Apache-2.0). Their licence texts are distributed with those
-packages.
+packages. Handwriting recognition uses transformers.js (Apache-2.0) and
+onnxruntime-web (MIT).
+
+The optional on-device handwriting model (FormulaNet, from the Texo project,
+AGPL-3.0) is not part of this repository; it is downloaded by
+`npm run setup:handwriting`. See docs/tablet.md for what to consider before
+redistributing a build that includes it.
 
 Physics Tooling can optionally run models in separately installed programs
 such as MATLAB, Mathematica, GNU Octave, Python and Julia. Those programs are

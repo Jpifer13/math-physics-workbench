@@ -4,6 +4,7 @@ export const TABS = [
   { id: 'sim', name: 'Simulations', hint: 'Define a system, run it, and experiment on it' },
   { id: 'flow', name: 'Equation Flows', hint: 'Compose formulas from blocks with units checked' },
   { id: 'math', name: 'Math Tools', hint: 'Function analysis, surfaces, vector fields, units' },
+  { id: 'scratch', name: 'Scratchpad', hint: 'Write mathematics by hand and have it worked out' },
 ] as const;
 export type TabId = (typeof TABS)[number]['id'];
 

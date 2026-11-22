@@ -356,10 +356,16 @@ interface Pass {
   fns: Map<string, FnDef>;
   odes: { lhs: MathNode; rhs: MathNode }[];
   inits: Map<string, number>;
+  /** Names that lines needed a value for and did not find. */
+  missing: Set<string>;
 }
 
-function runPass(sources: string[], prior: Pass | null): Pass {
-  const pass: Pass = { lines: [], values: new Map(), definedBy: new Map(), fns: new Map(), odes: [], inits: new Map() };
+/** Letters whose capital and small forms look alike in handwriting, so a recogniser may give either. */
+const LOOKALIKE = /^[cCkKoOpPsSuUvVwWxXzZ]/;
+const otherCase = (name: string): string => (name[0] === name[0].toUpperCase() ? name[0].toLowerCase() : name[0].toUpperCase()) + name.slice(1);
+
+function runPass(sources: string[], prior: Pass | null, same: ReadonlyMap<string, string> = new Map()): Pass {
+  const pass: Pass = { lines: [], values: new Map(), definedBy: new Map(), fns: new Map(), odes: [], inits: new Map(), missing: new Set() };
   // Functions keep their definitions from the previous pass, so one may be used above where it is defined.
   const fnNames = new Set(prior ? prior.fns.keys() : []);
 
@@ -381,9 +387,24 @@ function runPass(sources: string[], prior: Pass | null): Pass {
     const known = (name: string) => lookup(name) !== undefined;
     const define = (name: string, value: number) => { pass.values.set(name, value); pass.definedBy.set(name, index); };
 
+    let merged = false;
     const work = (): LineResult => {
       if (!src.trim()) return { kind: 'waiting', message: 'Nothing is written here.' };
       const line: ParsedLine = parseLatex(src, { functions: fnNames });
+      // Where x and X were taken to be one letter, read them as one.
+      if (same.size) {
+        const merge = (n: MathNode): MathNode => mapNode(n, (x) => {
+          if (x.k !== 'sym') return undefined;
+          const d = splitDerivName(x.name);
+          const to = same.get(d.base);
+          if (!to) return undefined;
+          merged = true;
+          return { k: 'sym', name: derivName(to, d.order) };
+        });
+        line.lhs = merge(line.lhs);
+        if (line.rhs) line.rhs = merge(line.rhs);
+        if (line.name && same.has(line.name) && line.kind === 'initial') line.name = same.get(line.name);
+      }
 
       if (line.kind === 'function') {
         pass.fns.set(line.name!, { param: line.param!, body: line.rhs! });
@@ -413,6 +434,7 @@ function runPass(sources: string[], prior: Pass | null): Pass {
       }
 
       const unknown = [...free].filter((x) => !known(x));
+      unknown.forEach((x) => pass.missing.add(x));
 
       if (line.kind === 'expr') {
         if (!unknown.length) {
@@ -468,7 +490,12 @@ function runPass(sources: string[], prior: Pass | null): Pass {
     };
 
     try {
-      pass.lines.push(work());
+      const result = work();
+      if (merged) {
+        const pairs = [...same].map(([from, to]) => `${from} and ${to}`).join(', ');
+        result.message = `${result.message ? `${result.message} ` : ''}Took ${pairs} to be the same letter.`;
+      }
+      pass.lines.push(result);
     } catch (err) {
       if (err instanceof Unknown) pass.lines.push({ kind: 'waiting', message: `Needs a value for ${list(err.names)}.` });
       else if (err instanceof MathReadError) pass.lines.push({ kind: 'error', message: err.message });
@@ -484,13 +511,24 @@ const sameValues = (a: Map<string, number>, b: Map<string, number>): boolean =>
 /** Work out every line of a page. Each entry of `sources` is one line of LaTeX. */
 export function evaluateNotebook(sources: string[]): Notebook {
   // Later lines can supply values that earlier ones need, so go round until nothing changes.
-  let pass = runPass(sources, null);
-  for (let i = 0; i < 6; i++) {
-    const next = runPass(sources, pass);
-    const settled = sameValues(next.values, pass.values) && next.fns.size === pass.fns.size;
-    pass = next;
-    if (settled) break;
+  const settle = (same?: ReadonlyMap<string, string>): Pass => {
+    let p = runPass(sources, null, same);
+    for (let i = 0; i < 6; i++) {
+      const next = runPass(sources, p, same);
+      const settled = sameValues(next.values, p.values) && next.fns.size === p.fns.size;
+      p = next;
+      if (settled) break;
+    }
+    return p;
+  };
+  let pass = settle();
+  // Handwritten x and X are easily confused. Where one has a value and the other is wanted but has none, they are one letter.
+  const same = new Map<string, string>();
+  for (const name of pass.missing) {
+    const twin = otherCase(name);
+    if (LOOKALIKE.test(name) && !pass.values.has(name) && pass.values.has(twin)) same.set(name, twin);
   }
+  if (same.size) pass = settle(same);
   const built = pass.odes.length ? buildModel(pass) : { model: null, notes: [] };
   return { lines: pass.lines, model: built.model, modelNotes: built.notes };
 }
@@ -589,7 +627,7 @@ function buildModel(pass: Pass): { model: OdeModel | null; notes: string[] } {
       const name = derivName(base, k);
       const given = pass.inits.get(name);
       const init = given ?? (k === 0 ? 1 : 0);
-      if (given === undefined) notes.push(`${nameTextPlain(name)} has no starting value, so it starts at ${init}. Write ${k === 0 ? base : `\\dot{${base}}`}(0) = … to set it.`);
+      if (given === undefined) notes.push(`${nameTextPlain(name)} has no starting value, so it starts at ${init}. Write ${base}${"'".repeat(k)}(0) = … to set it.`);
       states.push({ name, init: String(init), deriv: k === order - 1 ? toMathText(expr) : derivName(base, k + 1) });
     }
   }

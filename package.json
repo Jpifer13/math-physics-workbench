@@ -10,10 +10,14 @@
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
     "dev:web": "vite",
+    "build:web": "tsc --noEmit && TARGET=web vite build",
+    "serve:web": "TARGET=web vite preview --outDir dist-web --host",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "setup:handwriting": "node scripts/setup-handwriting.mjs"
   },
   "devDependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@types/katex": "^0.16.8",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

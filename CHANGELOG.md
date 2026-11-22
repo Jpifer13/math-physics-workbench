@@ -13,6 +13,19 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 
 ### Added
 
+- **Scratchpad.** A fourth workspace for writing mathematics by hand. Lines
+  are read, typeset and worked out: values, variables defined anywhere on the
+  page, equations with one unknown, functions, definite integrals, sums and
+  derivatives. Differential equations written on the page open as a
+  simulation. Misread lines can be corrected by typing.
+- **A build for tablets and browsers** (`npm run build:web`): a static site
+  that can be added to an iPad's home screen and works offline when served
+  over HTTPS. See `docs/tablet.md`.
+- Handwriting is read on the device by an optional model
+  (`npm run setup:handwriting`), or by a recognition service of your own
+  choosing, which is off unless you turn it on and build with its address
+  permitted.
+- Buttons and fields are larger on touch screens.
 - **Uncertainty view.** Give parameters a spread (normal or uniform) and
   sample them together on a seeded Latin hypercube. Shows the distribution of
   a measurement with 68% and 95% intervals, a band around the observable over
