@@ -77,6 +77,13 @@ view on the left and every edit re-runs immediately.
   the fit* then gives intervals that do not rely on the linear approximation,
   and *Bootstrap* gives them by resampling the data and refitting 200 times.
   The imported data is saved in the simulation file.
+- **Help while you work** — equation fields offer to finish the name you are
+  typing (the model's own names first, then functions), and *Functions and
+  syntax* opens a searchable reference with a worked example for every entry.
+  A *model check* points out likely mistakes that are not errors: a parameter
+  no equation uses, a misspelt name ("did you mean `vy`?"), an event that can
+  never fire, a stop condition that was never met. Each view explains itself
+  the first time it is opened.
 - **Undo / redo** for every edit to a simulation or a flow.
 - **Files made for version control** — documents are JSON with keys in a fixed
   order and one state, parameter, block or wire per line, so `git diff` shows

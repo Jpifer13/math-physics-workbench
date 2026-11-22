@@ -18,6 +18,14 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   a measurement with 68% and 95% intervals, a band around the observable over
   time, and Sobol first-order and total sensitivity indices with intervals.
   The analysis is saved with the simulation and recorded in CSV exports.
+- **Autocomplete in equation fields**: the model's names, then functions.
+  Arrow keys choose, Tab or Enter accepts, Escape dismisses.
+- **Functions and syntax reference**, searchable, with a worked example for
+  every entry.
+- **Model check**: lists likely mistakes that are not errors, such as an
+  unused parameter, a misspelt name, or an event that can never fire.
+- **First-use tips** on each simulation view, dismissible; they can be shown
+  again from the reference.
 - **Compare with a file.** File menu, or the link under Save: lists what
   differs between the open document and a saved one, and which differences
   change the numbers. A simulation's file can be shown as a reference run.

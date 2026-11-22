@@ -225,16 +225,17 @@ their own field and have little left over for tooling.
 and the international RSE survey as cited in [Requirements Engineering for
 Research Software][rse-vision].*
 
-**Today.** Templates and worked examples give a starting point, and errors are
-reported in plain language. There is no in-app help, no search across
-functions, and nothing that explains a view the first time it is opened.
-
-**Proposal — learn-by-doing aids (S–M).**
-- A function and syntax reference searchable from the equation editors, with
-  autocomplete for names defined in the model.
-- A "check my model" pass that lists likely mistakes before running: unused
-  parameters, states with zero rate, an event that can never fire.
-- Short, dismissible explanations on first use of each view.
+**Status: done.** Equation fields complete names as you type, offering the
+model's own states, parameters and observables before functions and
+constants. *Functions and syntax* is a searchable reference; every entry has
+an example with its value, and the tests evaluate each one so the reference
+cannot drift from the solver. A *model check* runs continuously and lists
+likely mistakes that are not errors: an unused parameter, a misspelt name with
+the closest match, a state that never changes, an event that cannot fire or
+did not, a stop condition never met, a fixed step too coarse. Each of the five
+simulation views shows a short explanation until dismissed.
+**Limits:** completion and the model check cover simulations, not equation
+flows or the math tools; there is no guided tour.
 
 ### 12. No way to drive it from a script
 
@@ -254,10 +255,10 @@ free of UI code, which makes this mostly packaging.
 
 ## Suggested order for what remains
 
-Done: items 1 to 9; item 10 mostly.
+Done: items 1 to 9 and 11; item 10 mostly.
 
-1. Items 11 and 12, and sub-flows from item 10, as the user base and model
-   sizes grow.
+1. Item 12, and sub-flows from item 10, as the user base and model sizes
+   grow.
 
 ## Sources
 

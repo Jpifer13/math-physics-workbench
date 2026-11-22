@@ -2,9 +2,13 @@ import { useMemo, useState } from 'react';
 import { symbolToLatex } from '../core/expr';
 import { checkUnits } from '../core/dimcheck';
 import { MEASURES } from '../core/measure';
-import type { Expectation, OdeModel, SolverMethod } from '../core/ode';
+import { checkModel } from '../core/lint';
+import type { Expectation, OdeModel, SimResult, SolverMethod } from '../core/ode';
+import type { ModelName } from '../core/reference';
 import { compareWithFile, confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
+import { ExprInput } from '../components/ExprInput';
 import { NumberField } from '../components/NumberField';
+import { useReference } from '../components/ReferenceDialog';
 import { Tex } from '../components/Tex';
 import { UndoRedo } from '../components/UndoRedo';
 import { MODELS } from './models';
@@ -47,7 +51,7 @@ const METHODS: { id: SolverMethod; label: string; hint: string }[] = [
 ];
 
 /** Left panel: everything that defines the system being simulated. */
-export function Definition() {
+export function Definition({ run }: { run: SimResult }) {
   const model = useSim((s) => s.model);
   const patch = useSim((s) => s.patch);
   const filePath = useSim((s) => s.filePath);
@@ -55,6 +59,15 @@ export function Definition() {
   const [configure, setConfigure] = useState(false);
   const eqs = useMemo(() => equationsTex(model), [model]);
   const units = useMemo(() => checkUnits(model), [model]);
+  const findings = useMemo(() => checkModel(model, run), [model, run]);
+  const warnings = findings.filter((f) => f.level === 'warn').length;
+  /** Everything that can be named in an equation of this model, for completion and the reference. */
+  const names: ModelName[] = useMemo(() => [
+    ...model.states.map((s) => ({ name: s.name, kind: 'state' as const })),
+    ...model.params.map((p) => ({ name: p.name, kind: 'parameter' as const, detail: p.label })),
+    ...model.derived.map((d) => ({ name: d.name, kind: 'observable' as const })),
+    { name: 't', kind: 'time' as const },
+  ], [model.states, model.params, model.derived]);
   /** Unit problems attached to one part of the model. */
   const unitNotes = (...where: string[]) => {
     const found = units.issues.filter((i) => where.includes(i.where));
@@ -109,24 +122,32 @@ export function Definition() {
                 ? `Units: ${units.issues.length} problem${units.issues.length > 1 ? 's' : ''} found — see the notes beside the equations.`
                 : `Units: consistent (${units.checked} equation${units.checked === 1 ? '' : 's'} checked${units.checked ? '' : '; label more quantities to check more'}).`}
           </div>
+          {findings.length > 0 && (
+            <details className={`lint${warnings ? ' bad' : ''}`} open={warnings > 0}>
+              <summary>Model check: {findings.length} {findings.length === 1 ? 'thing' : 'things'} to look at</summary>
+              <ul>
+                {findings.map((f, k) => <li key={k} className={f.level}><b>{f.where}</b> {f.message}</li>)}
+              </ul>
+            </details>
+          )}
           {model.states.map((s, i) => (
             <div className="ed-block" key={i}>
               <div className="ed-row">
                 <input className="code name" value={s.name} onChange={(e) => setState(i, { name: e.target.value })} aria-label="State variable name" spellCheck={false} />
                 <span className="muted">at t = 0:</span>
-                <input className="code" value={s.init} onChange={(e) => setState(i, { init: e.target.value })} aria-label={`Initial value of ${s.name}`} spellCheck={false} />
+                <ExprInput value={s.init} onChange={(init) => setState(i, { init })} names={names} label={`Initial value of ${s.name}`} />
                 <input className="code unit" value={s.unit ?? ''} placeholder="unit" onChange={(e) => setState(i, { unit: e.target.value || undefined })} aria-label={`Unit of ${s.name}`} />
                 <button className="btn icon" title="Remove state variable" onClick={() => patch({ states: model.states.filter((_, j) => j !== i) })}>×</button>
               </div>
               <div className="ed-row">
                 <span className="muted rate">d{s.name}/dt =</span>
-                <input className="code" value={s.deriv} onChange={(e) => setState(i, { deriv: e.target.value })} aria-label={`Rate of change of ${s.name}`} spellCheck={false} />
+                <ExprInput value={s.deriv} onChange={(deriv) => setState(i, { deriv })} names={names} label={`Rate of change of ${s.name}`} />
               </div>
               {unitNotes(`state:${s.name}`, `init:${s.name}`, `rate:${s.name}`)}
             </div>
           ))}
           <button className="btn small" onClick={() => patch({ states: [...model.states, { name: `s${model.states.length + 1}`, init: '0', deriv: '0' }] })}>+ State variable</button>
-          <p className="muted help">Expressions may use time <code>t</code>, parameters, state variables and functions such as <code>sin</code>, <code>sqrt</code>, <code>exp</code>, <code>abs</code>. Initial values may reference parameters.</p>
+          <p className="muted help">Expressions may use time <code>t</code>, parameters, state variables and functions such as <code>sin</code>, <code>sqrt</code>, <code>exp</code>, <code>abs</code>. Initial values may reference parameters. <button className="link" onClick={() => useReference.getState().show(names)}>Functions and syntax…</button></p>
         </Section>
 
         <Section
@@ -175,7 +196,7 @@ export function Definition() {
             <div className="ed-row">
               <input className="code name" value={d.name} onChange={(e) => setDerived(i, { name: e.target.value })} aria-label="Observable name" spellCheck={false} />
               <span className="muted">=</span>
-              <input className="code" value={d.expr} onChange={(e) => setDerived(i, { expr: e.target.value })} aria-label={`Expression for ${d.name}`} spellCheck={false} />
+              <ExprInput value={d.expr} onChange={(expr) => setDerived(i, { expr })} names={names} label={`Expression for ${d.name}`} />
               <input className="code unit" value={d.unit ?? ''} placeholder={units.inferred[d.name] || 'unit'} title={units.inferred[d.name] ? `Worked out from the expression: ${units.inferred[d.name]}` : undefined} onChange={(e) => setDerived(i, { unit: e.target.value || undefined })} aria-label={`Unit of ${d.name}`} />
               <button className="btn icon" title="Remove observable" onClick={() => patch({ derived: model.derived.filter((_, j) => j !== i) })}>×</button>
             </div>
@@ -193,12 +214,12 @@ export function Definition() {
               <div className="ed-block" key={i}>
                 <div className="ed-row">
                   <span className="muted rate">when</span>
-                  <input className="code" value={ev.when} placeholder="y < 0" onChange={(e) => setEvent({ when: e.target.value })} aria-label={`Condition of event ${i + 1}`} spellCheck={false} />
+                  <ExprInput value={ev.when} placeholder="y < 0" onChange={(when) => setEvent({ when })} names={names} label={`Condition of event ${i + 1}`} />
                   <button className="btn icon" title="Remove event" onClick={() => patch({ events: model.events!.filter((_, j) => j !== i) })}>×</button>
                 </div>
                 <div className="ed-row">
                   <span className="muted rate">then set</span>
-                  <input className="code" value={ev.then} placeholder="vy = -e * vy" onChange={(e) => setEvent({ then: e.target.value })} aria-label={`Resets of event ${i + 1}`} spellCheck={false} />
+                  <ExprInput value={ev.then} placeholder="vy = -e * vy" onChange={(then) => setEvent({ then })} names={names} label={`Resets of event ${i + 1}`} />
                 </div>
                 {unitNotes(`event:${i + 1}`)}
               </div>
@@ -267,7 +288,7 @@ export function Definition() {
           </div>
           <div className="ed-row">
             <span className="muted">stop when</span>
-            <input className="code" value={model.stopWhen ?? ''} placeholder="optional, e.g. y < 0" onChange={(e) => patch({ stopWhen: e.target.value || undefined })} aria-label="Stop condition" spellCheck={false} />
+            <ExprInput value={model.stopWhen ?? ''} placeholder="optional, e.g. y < 0" onChange={(stopWhen) => patch({ stopWhen: stopWhen || undefined })} names={names} label="Stop condition" />
           </div>
           {unitNotes('stop')}
         </Section>

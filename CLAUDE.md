@@ -14,7 +14,7 @@ and why, and `docs/integrations.md` for the bridges to other software.
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~170 tests
+npm test             # vitest; ~190 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
@@ -46,6 +46,8 @@ src/core/              Engine. No React, no DOM. Everything here is unit-tested.
   fastExpr.ts            Compiles expressions to closures (mathjs fallback)
   measure.ts             Measurements, parameter scans, CSV
   docfile.ts             File reading/writing, document diff, flow auto-layout
+  lint.ts                "Check my model": likely mistakes that are not errors
+  reference.ts           Function reference and name completion for equations
   sensitivity.ts         Sampling, uncertainty propagation, Sobol indices
   fit.ts                 Data import, least-squares fit, profiles, runs test
   trust.ts               Run comparison, accuracy report, expectations, provenance
@@ -86,6 +88,9 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   `--series-1…8` order in `styles.css`; don't invent colours. A new chart
   type gets its export buttons from `FigureExport` in `components/figure.tsx`
   by supplying a `build` function; sizing arithmetic lives in `figureSize.ts`.
+- **Supported functions.** A function the solver accepts gets an entry in
+  `REFERENCE` (`core/reference.ts`) with an example and its value; the tests
+  run every entry through the solver. `ln` is not accepted (use `log`).
 - **Plain-language errors.** Messages say what happened and what to do, in the
   user's terms. No raw exceptions in the UI.
 - **Commits** go on a feature branch, not straight to `main`.
@@ -156,7 +161,8 @@ so do look.
 Done and verified: the three workspaces, four solvers with events, experiments
 (1-D and 2-D), uncertainty propagation and Sobol sensitivity, fitting with
 uncertainties, ties, profiles and bootstrap, figure export (SVG, PNG, PDF),
-diff-friendly files and compare-with-file, accuracy checks, expectations, provenance, unit
+diff-friendly files and compare-with-file, the model check, function
+reference and autocomplete, accuracy checks, expectations, provenance, unit
 checking, undo/redo, code export, running in external tools, the desktop
 shell, and Linux packaging.
 
@@ -183,7 +189,7 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 **Next, in roadmap order** (`docs/roadmap.md` has the evidence and detail):
 1. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
    inputs; feeding fitted uncertainties in as the input spread.
-2. Items 11–12 — in-app function reference and help; a command-line mode.
+2. Item 12 — a command-line mode.
 3. Rest of item 10 — sub-flows.
 
 Known rough edges: `npm audit` reports a moderate advisory in the installer

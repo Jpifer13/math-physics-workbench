@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { desktop } from './desktop';
 import { CompareDialog } from './components/CompareDialog';
+import { ReferenceDialog } from './components/ReferenceDialog';
 import { activeKind, compareWithFile, dirtyDocuments, loadOpened, newDocument, openDocument, saveAllDirty, saveDocument, undoRedo } from './documents';
 import { FlowEditor } from './flow/FlowEditor';
 import { useFlow } from './flow/store';
@@ -69,6 +70,7 @@ export function App() {
         {tab === 'math' && <MathTools />}
       </div>
       <CompareDialog />
+      <ReferenceDialog />
     </div>
   );
 }
