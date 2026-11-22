@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { interpolate, parseTable } from '../core/fit';
+import { parseTable } from '../core/fit';
+import { compareRuns, type Difference } from '../core/trust';
+import { paperSummary } from './paper';
 import type { OdeModel, SimResult } from '../core/ode';
 import { fmtNum } from '../core/units';
 import { desktop, type EngineInfo } from '../desktop';
@@ -11,30 +13,8 @@ interface Comparison {
   engine: string;
   ms: number;
   run: SimResult;
-  rows: { name: string; worst: number; scale: number; at: number }[];
+  rows: Difference[];
   missing: string[];
-}
-
-/** Largest difference per quantity between this app's run and an external one, on the external time grid. */
-function compare(ours: SimResult, theirs: SimResult): Pick<Comparison, 'rows' | 'missing'> {
-  const rows: Comparison['rows'] = [];
-  const missing: string[] = [];
-  const jumps = ours.eventTimes ?? [];
-  for (const [name, values] of Object.entries(theirs.series)) {
-    const mine = ours.series[name];
-    if (!mine) { missing.push(name); continue; }
-    const scale = Math.max(Math.max(...mine) - Math.min(...mine), Math.max(...mine.map(Math.abs)), 1e-300);
-    let worst = 0, at = 0;
-    theirs.t.forEach((t, i) => {
-      // At the instant of a discontinuity the two outputs may sit on opposite sides of the jump.
-      if (jumps.some((te) => Math.abs(te - t) < 1e-3 * Math.max(1, Math.abs(te)))) return;
-      const v = interpolate(ours.t, mine, t);
-      const d = Math.abs(v - values[i]);
-      if (Number.isFinite(d) && d > worst) { worst = d; at = t; }
-    });
-    rows.push({ name, worst, scale, at });
-  }
-  return { rows, missing };
 }
 
 /** Bridges to other scientific software: export the model as code, or run it there and compare. */
@@ -90,7 +70,7 @@ export function ToolsView({ model, run }: { model: OdeModel; run: SimResult }) {
       } else {
         const cols = parseTable(r.csv);
         const external: SimResult = { t: cols[0].values, series: Object.fromEntries(cols.slice(1).map((c) => [c.name, c.values])) };
-        setResult({ engine: engine.name, ms: r.ms ?? 0, run: external, ...compare(run, external) });
+        setResult({ engine: engine.name, ms: r.ms ?? 0, run: external, ...compareRuns(run, external) });
       }
     } catch (err) {
       setFailure({ engine: engine.name, log: err instanceof Error ? err.message : String(err) });
@@ -129,6 +109,17 @@ export function ToolsView({ model, run }: { model: OdeModel; run: SimResult }) {
         ) : (
           <pre className="code-preview" aria-label="Generated code">{generated.code}</pre>
         )}
+      </section>
+
+      <section className="card">
+        <h3>
+          For a paper
+          <span className="card-tools">
+            <button className="btn small" onClick={() => void navigator.clipboard.writeText(paperSummary(model, 'latex')).then(() => setStatus('LaTeX copied'), () => setStatus('Copy failed'))}>Copy as LaTeX</button>
+            <button className="btn small" onClick={() => void navigator.clipboard.writeText(paperSummary(model, 'markdown')).then(() => setStatus('Markdown copied'), () => setStatus('Copy failed'))}>Copy as Markdown</button>
+          </span>
+        </h3>
+        <p className="muted help">The governing equations, a table of parameter values, the initial conditions and a sentence describing the numerical method — ready to paste into a methods section. Charts export as vector (SVG) or high-resolution (PNG) images from the buttons that appear when you point at them.</p>
       </section>
 
       <section className="card">

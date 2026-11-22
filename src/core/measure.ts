@@ -21,6 +21,7 @@ export const MEASURES: readonly MeasureDef[] = [
   { id: 'mean', label: 'Time average', hint: 'Mean over the run, weighted by time' },
   { id: 'rms', label: 'RMS', hint: 'Root-mean-square over the run' },
   { id: 'amplitude', label: 'Steady amplitude', hint: 'Half the peak-to-peak range over the last third of the run' },
+  { id: 'range', label: 'Peak-to-peak range', hint: 'Largest minus smallest value over the run — the drift of a quantity that should be conserved' },
   { id: 'period', label: 'Period', hint: 'Mean time between upward crossings of the average value', isTime: true },
   { id: 'tmax', label: 'Time of maximum', hint: 'When the largest value occurs', isTime: true },
   { id: 'duration', label: 'Run duration', hint: 'Time at which the run ended (useful with a stop condition)', isTime: true },
@@ -40,6 +41,8 @@ export function measure(t: number[], y: number[], id: MeasureId): number {
   switch (id) {
     case 'final':
       return y[n - 1];
+    case 'range':
+      return Math.max(...y) - Math.min(...y);
     case 'duration':
       return t[n - 1];
     case 'max':
@@ -119,12 +122,16 @@ export function scan(model: OdeModel, c: ScanConfig): ScanResult {
   return { x, y, failed: y.filter((v) => !Number.isFinite(v)).length };
 }
 
-/** Serialise named columns as CSV. Full double precision; empty cells for non-finite values. */
-export function toCsv(columns: { name: string; values: number[] }[]): string {
+/**
+ * Serialise named columns as CSV. Full double precision; empty cells for
+ * non-finite values. `comments` become leading lines starting with "# ", which
+ * this app (and NumPy, pandas with comment='#', and most tools) skip on import.
+ */
+export function toCsv(columns: { name: string; values: number[] }[], comments: string[] = []): string {
   const rows = Math.max(0, ...columns.map((c) => c.values.length));
   const cell = (v: number | undefined) => (v === undefined || !Number.isFinite(v) ? '' : String(v));
   const head = columns.map((c) => (/[",\n]/.test(c.name) ? `"${c.name.replace(/"/g, '""')}"` : c.name)).join(',');
-  const lines = [head];
+  const lines = [...comments.map((c) => `# ${c.replace(/\r?\n/g, ' ')}`), head];
   for (let r = 0; r < rows; r++) lines.push(columns.map((c) => cell(c.values[r])).join(','));
   return lines.join('\n') + '\n';
 }

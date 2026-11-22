@@ -11,6 +11,7 @@ import { Plot3D } from '../components/Plot3D';
 import { Tex } from '../components/Tex';
 import { NumberField, ResultsContext } from './PhysNode';
 import { useNav } from '../nav';
+import { APP_VERSION } from '../version';
 import { useSim } from '../sim/store';
 import { useFlow } from './store';
 import { addFlowToSimulation } from './toSimulation';
@@ -92,12 +93,19 @@ export function ModelPanel() {
     const xName = xCfg ? axisLabel(xCfg.label, xCfg.unit) : 'x';
     const zName = axisLabel(outName, outUnit);
     let csv = '';
-    if (curve) csv = toCsv([{ name: xName, values: curve.x }, { name: zName, values: curve.y }]);
+    // Record what produced the numbers: the formula and every input's value.
+    const header = [
+      `Physics Tooling ${APP_VERSION} — exported ${new Date().toISOString()}`,
+      `flow: ${useFlow.getState().name}`,
+      ...(result?.ex ? [`formula: ${outCfg?.symbol || outName} = ${toText(result.ex)}`] : []),
+      `inputs: ${inputs.map((i) => { const c = i.data.cfg as QuantityData; return `${c.symbol || c.label} = ${c.value}${c.unit ? ` ${c.unit}` : ''}`; }).join('; ')}`,
+    ];
+    if (curve) csv = toCsv([{ name: xName, values: curve.x }, { name: zName, values: curve.y }], header);
     else if (map && yCfg) {
       // Long format: one row per grid point.
       const cols = [[], [], []] as number[][];
       map.ys.forEach((yv, j) => map.xs.forEach((xv, i) => { cols[0].push(xv); cols[1].push(yv); cols[2].push(map.z[j][i]); }));
-      csv = toCsv([{ name: xName, values: cols[0] }, { name: axisLabel(yCfg.label, yCfg.unit), values: cols[1] }, { name: zName, values: cols[2] }]);
+      csv = toCsv([{ name: xName, values: cols[0] }, { name: axisLabel(yCfg.label, yCfg.unit), values: cols[1] }, { name: zName, values: cols[2] }], header);
     }
     if (!csv) return;
     try {

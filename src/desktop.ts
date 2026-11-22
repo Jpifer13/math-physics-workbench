@@ -6,6 +6,8 @@ export interface OpenedFile {
 export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math';
 export type DocExt = 'physsim' | 'physflow';
 
+export type ExportExt = 'csv' | 'json' | 'svg' | 'png' | 'py' | 'm' | 'wl' | 'jl';
+
 /** A separately installed program that can run generated scripts. */
 export interface EngineInfo {
   id: string;
@@ -18,7 +20,7 @@ export interface DesktopApi {
   platform: string;
   openDocument(): Promise<OpenedFile | null>;
   saveDocument(text: string, filePath: string | null, suggestedName: string, ext: DocExt): Promise<string | null>;
-  exportFile(text: string, suggestedName: string, ext: 'csv' | 'py' | 'm' | 'wl' | 'jl'): Promise<string | null>;
+  exportFile(text: string, suggestedName: string, ext: ExportExt, encoding?: 'utf8' | 'base64'): Promise<string | null>;
   listEngines(): Promise<EngineInfo[]>;
   locateEngine(id: string): Promise<string | null>;
   runEngine(id: string, code: string): Promise<{ ok: boolean; csv?: string; log: string; ms?: number; program?: string }>;

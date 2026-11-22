@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { measure, toCsv } from '../core/measure';
-import { sampleIndex, type OdeModel, type SimResult } from '../core/ode';
+import { sampleIndex, type Expectation, type MeasureId, type OdeModel, type SimResult } from '../core/ode';
+import { accuracyReport, checkExpectations, provenance, type AccuracyReport } from '../core/trust';
 import { fmtNum } from '../core/units';
 import { exportCsv } from '../documents';
+import { saveFile } from '../saveFile';
+import { APP_VERSION, FILE_FORMAT } from '../version';
 import { Plot, type Series } from '../components/Plot';
 import { Plot3D, type Vec3 } from '../components/Plot3D';
 import { Scene } from './Scene';
@@ -26,6 +29,8 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
   const [speed, setSpeed] = useState(1);
   const [tNow, setTNow] = useState(0);
   const [exported, setExported] = useState('');
+  // The accuracy report belongs to one particular run; a new run makes it stale.
+  const [accuracy, setAccuracy] = useState<{ run: SimResult; report: AccuracyReport } | null>(null);
 
   // A freshly loaded model resets the view state.
   useEffect(() => {
@@ -100,13 +105,41 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
       max: measure(run.t, run.series[n], 'max'),
       mean: measure(run.t, run.series[n], 'mean'),
       period: measure(run.t, run.series[n], 'period'),
+      range: measure(run.t, run.series[n], 'range'),
     })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [run],
   );
 
+  const expectations = useMemo(() => checkExpectations(model, run), [model, run]);
+  const failed = expectations.filter((e) => !e.pass).length;
+  const report = accuracy?.run === run ? accuracy.report : null;
+  /** Turn a measured value into an expectation, with a tolerance loose enough to survive solver changes. */
+  const expect = (observable: string, measure: MeasureId, value: number) => {
+    const e: Expectation = measure === 'range'
+      ? { observable, measure, compare: 'atMost', value: Number((Math.max(value * 10, 1e-12)).toPrecision(2)) }
+      : { observable, measure, compare: 'equals', value: Number(value.toPrecision(8)), tolerance: Number((Math.max(Math.abs(value) * 1e-4, 1e-12)).toPrecision(2)) };
+    patch({ expectations: [...(model.expectations ?? []), e] });
+  };
+  const stamp = () => provenance(model, { appVersion: APP_VERSION, when: new Date().toISOString(), run });
+
+  const exportRecord = async () => {
+    const record = {
+      kind: 'physics-tooling-run-record', format: FILE_FORMAT, provenance: stamp(),
+      model: { ...model, data: undefined },
+      result: { t: run.t, series: run.series, eventTimes: run.eventTimes ?? [], stats: run.stats },
+      expectations: expectations.map((e) => ({ statement: e.text, actual: e.actual, pass: e.pass })),
+    };
+    try {
+      const saved = await saveFile(JSON.stringify(record), `${model.name} run record`, 'json');
+      setExported(saved ? `Exported to ${saved}` : '');
+    } catch (err) {
+      setExported(`Export failed: ${err instanceof Error ? err.message : err}`);
+    }
+  };
+
   const exportRun = async () => {
-    const csv = toCsv([{ name: 't', values: run.t }, ...names.map((n) => ({ name: withUnit(n), values: run.series[n] }))]);
+    const csv = toCsv([{ name: 't', values: run.t }, ...names.map((n) => ({ name: withUnit(n), values: run.series[n] }))], stamp());
     try {
       setExported(await exportCsv(csv, `${model.name} run`));
     } catch (err) {
@@ -146,8 +179,21 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
         ) : (
           <button className="btn small" onClick={holdReference} disabled={!run.t.length} title="Keep this run on the charts (dashed) while you change the model">Hold as reference</button>
         )}
-        <button className="btn small" onClick={() => void exportRun()} disabled={!run.t.length}>Export run (CSV)</button>
+        <button className="btn small" onClick={() => void exportRun()} disabled={!run.t.length} title="The data, with a header recording the model, parameters and solver that produced it">Export run (CSV)</button>
+        <button className="btn small" onClick={() => void exportRecord()} disabled={!run.t.length} title="One file holding the model, the result and its provenance — everything needed to reproduce this run">Run record</button>
       </div>
+      {expectations.length > 0 && (
+        <details className={`expect-strip ${failed ? 'fail' : 'pass'}`} open={failed > 0}>
+          <summary>{failed ? `${failed} of ${expectations.length} expectations not met` : `All ${expectations.length} expectation${expectations.length > 1 ? 's' : ''} met`}</summary>
+          <ul>
+            {expectations.map((e, i) => (
+              <li key={i} className={e.pass ? 'ok' : 'bad'}>
+                <span className="mark">{e.pass ? '✓' : '✗'}</span> {e.text} <span className="muted">— measured {Number.isFinite(e.actual) ? fmtNum(e.actual, 8) : 'nothing (no such quantity, or no value)'}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {reference && <div className="ref-note">Dashed curves show the held reference run ({reference.label}).</div>}
 
       <div className="sim-grid">
@@ -213,11 +259,53 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
         </section>
 
         <section className="card wide">
-          <h3>Measurements <span className="card-tools muted">over the whole run · “now” follows the playhead</span></h3>
+          <h3>
+            Accuracy
+            <span className="card-tools">
+              <button className="btn small" disabled={!run.t.length || !!run.error} onClick={() => setAccuracy({ run, report: accuracyReport(model, run) })}>{report ? 'Check again' : 'Check accuracy'}</button>
+            </span>
+          </h3>
+          {!report ? (
+            <p className="muted">Runs the model twice more — once with tighter numerics, once with a different method — and reports how far each quantity moves. A result that does not move has converged; one that does is still telling you about the solver rather than the model.{accuracy && ' The model has changed since the last check.'}</p>
+          ) : (
+            <>
+              <div className={`verdict ${report.worst < 1e-3 ? 'good-box' : 'stale-note'}`}>
+                {report.worst < 1e-3
+                  ? <>Converged: tightening the numerics and changing the method move no quantity by more than <b>{fmtNum(report.worst * 100, 2)} %</b> of its size.</>
+                  : report.growing
+                    ? <>Not converged, and the disagreement grows towards the end of the run (up to <b>{fmtNum(report.worst * 100, 2)} %</b>). That is the signature of sensitive dynamics: individual trajectories cannot be trusted that far out, though statistics of the motion may still be.</>
+                    : <>Not converged: a quantity moves by <b>{fmtNum(report.worst * 100, 2)} %</b> of its size. Tighten the tolerance or reduce the step until this stops changing.</>}
+              </div>
+              <div className="accuracy-grid">
+                {[report.refined, report.crossMethod].map((c, k) => (
+                  <div key={k}>
+                    <div className="field-label">{k === 0 ? 'Tighter numerics' : 'Different method'} <span className="muted">— {c.label}</span></div>
+                    {c.error ? <div className="readout error">That run failed: {c.error}</div> : (
+                      <table className="table compact">
+                        <thead><tr><th>Quantity</th><th className="num">Largest change</th><th className="num">Relative</th><th className="num">At time</th></tr></thead>
+                        <tbody>
+                          {c.rows.map((r) => (
+                            <tr key={r.name} className={r.worst / r.scale >= 1e-3 ? 'flag' : undefined}>
+                              <td><code>{r.name}</code></td><td className="num">{fmtNum(r.worst, 3)}</td><td className="num">{fmtNum((r.worst / r.scale) * 100, 2)} %</td><td className="num">{fmtNum(r.at, 4)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="muted help">Changes are measured between recorded samples, so anything under about 0.1 % is within the resolution of the comparison. A conserved quantity staying constant is necessary for accuracy but does not prove it — use this check as well.</p>
+            </>
+          )}
+        </section>
+
+        <section className="card wide">
+          <h3>Measurements <span className="card-tools muted">over the whole run · “now” follows the playhead · click a value to make it an expectation</span></h3>
           <div className="table-scroll">
             <table className="table compact">
               <thead>
-                <tr><th>Quantity</th><th>Unit</th><th className="num">Now</th><th className="num">Final</th><th className="num">Minimum</th><th className="num">Maximum</th><th className="num">Time average</th><th className="num">Period</th></tr>
+                <tr><th>Quantity</th><th>Unit</th><th className="num">Now</th><th className="num">Final</th><th className="num">Minimum</th><th className="num">Maximum</th><th className="num">Time average</th><th className="num">Range</th><th className="num">Period</th></tr>
               </thead>
               <tbody>
                 {stats.map((r) => (
@@ -225,11 +313,13 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
                     <td><code>{r.n}</code>{isState(r.n) ? '' : <span className="muted"> observable</span>}</td>
                     <td className="muted">{unitOf(r.n) || '—'}</td>
                     <td className="num">{run.series[r.n].length ? fmtNum(run.series[r.n][frame], 6) : '—'}</td>
-                    <td className="num">{fmtNum(r.final, 6)}</td>
-                    <td className="num">{fmtNum(r.min, 6)}</td>
-                    <td className="num">{fmtNum(r.max, 6)}</td>
-                    <td className="num">{fmtNum(r.mean, 6)}</td>
-                    <td className="num">{Number.isFinite(r.period) ? fmtNum(r.period, 6) : '—'}</td>
+                    {(['final', 'min', 'max', 'mean', 'range', 'period'] as const).map((m) => (
+                      <td className="num pin-cell" key={m}>
+                        {Number.isFinite(r[m]) ? (
+                          <button className="pin" title={`Expect this: add "${m} of ${r.n}" to the model's expectations`} onClick={() => expect(r.n, m, r[m])}>{fmtNum(r[m], 6)}</button>
+                        ) : '—'}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

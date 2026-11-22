@@ -39,7 +39,17 @@ function compile(expr: string): EvalFunction {
 
 export type SolverMethod = 'rk45' | 'ros23' | 'rk4' | 'euler';
 
-export type MeasureId = 'final' | 'max' | 'min' | 'mean' | 'rms' | 'amplitude' | 'period' | 'tmax' | 'duration';
+export type MeasureId = 'final' | 'max' | 'min' | 'mean' | 'rms' | 'amplitude' | 'range' | 'period' | 'tmax' | 'duration';
+
+/** Something a run of the model is expected to satisfy — a regression test that travels with the model. */
+export interface Expectation {
+  observable: string;
+  measure: MeasureId;
+  /** 'equals' means within ± tolerance of value. */
+  compare: 'equals' | 'atMost' | 'atLeast';
+  value: number;
+  tolerance?: number;
+}
 
 /** A virtual experiment: vary one parameter and measure one observable on each run. */
 export interface ScanConfig {
@@ -99,6 +109,8 @@ export interface OdeModel {
   view3d?: [string, string, string];
   /** The saved parameter-scan experiment for this model. */
   experiment?: ScanConfig;
+  /** Expected behaviour, checked on every run. */
+  expectations?: Expectation[];
   /** Imported measurements to compare and fit against. */
   data?: ModelData;
   /** Free-form lab notes kept with the model. */

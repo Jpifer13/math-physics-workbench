@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('desktop', {
   /** Write a document ('physsim' | 'physflow'). With no path the Save dialog is shown. Resolves to the path, or null. */
   saveDocument: (text, filePath, suggestedName, ext) => ipcRenderer.invoke('doc:save', text, filePath, suggestedName, ext),
   /** Export data (e.g. CSV) through a Save dialog. Resolves to the path, or null. */
-  exportFile: (text, suggestedName, ext) => ipcRenderer.invoke('export:save', text, suggestedName, ext),
+  exportFile: (text, suggestedName, ext, encoding) => ipcRenderer.invoke('export:save', text, suggestedName, ext, encoding),
   /** Other scientific software installed on this computer: [{ id, name, path, custom }]. */
   listEngines: () => ipcRenderer.invoke('engine:list'),
   /** Ask the user where a program lives. Resolves to the chosen path, or null. */

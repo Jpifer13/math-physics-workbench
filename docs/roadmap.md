@@ -29,19 +29,13 @@ accurate" — is specifically called out as unreliable.
 *Evidence: peer-reviewed surveys and a systematic review ([Eisty et al.][eisty],
 [Kanewala & Bieman][kanewala]); a preprint on energy drift ([bioRxiv][drift]).*
 
-**Today.** Each run reports step counts and offers three methods of different
-order, and observables can track invariants. The user must work out for
-themselves whether the answer has converged.
-
-**Proposal — an accuracy report on every run (M).**
-- *Convergence check:* re-run automatically at a tighter tolerance (or half the
-  step) and report, per variable, how much the answer moved; flag variables
-  that have not converged.
-- *Cross-solver check:* one click runs the model with a second method and
-  overlays the difference. (Partly delivered: "Run and compare" already does
-  this against Python, Octave, MATLAB, Mathematica or Julia where installed.)
-- *Invariant monitor:* mark an observable as "should be conserved" and report
-  its drift — labelled as a necessary check, not proof of accuracy.
+**Status: done.** *Check accuracy* in the Run view re-runs the model with
+tighter numerics and again with a different method, reports how far each
+quantity moves, and says plainly whether the run has converged — or whether
+the disagreement grows with time, as it does for chaotic systems. Conserved
+quantities are covered by expectations (item 2), and the report states that
+conservation alone does not prove accuracy. "Run and compare" adds a check
+against an independent program.
 
 ### 2. Models have no tests
 
@@ -49,12 +43,10 @@ themselves whether the answer has converged.
 code. A model that worked last month can be silently broken by an edit.
 *Evidence: as item 1.*
 
-**Today.** Nothing guards a saved model against regressions.
-
-**Proposal — expectations stored with the model (S).** Let a simulation carry
-assertions: "period of `theta` = 2.007 ± 0.001", "`E` drifts by less than
-1e-6", "run ends before t = 5". They are evaluated on every run and shown as a
-pass/fail strip, so an edit that breaks known behaviour is visible at once.
+**Status: done.** A model carries expectations ("period of r = 14.993 ±
+0.0015", "peak-to-peak range of E ≤ 6.3e-8"). They are checked on every run
+and shown as a pass/fail strip; clicking a value in the Measurements table
+creates one. They are saved in the file and included in run records.
 
 ### 3. Solver failures are opaque
 
@@ -111,17 +103,13 @@ unclear provenance as recurring barriers.
 *Evidence: peer-reviewed surveys and case studies ([Ivie & Thain][ivie],
 [AlNoamany & Borghi][alnoamany], [Krafczyk et al.][krafczyk]).*
 
-**Today.** A `.physsim` file captures the model, parameters, solver settings,
-experiment design and data. But exported CSVs and charts carry no record of
-where they came from, and files have no format version.
-
-**Proposal — provenance on everything that leaves the app (S).**
-- Stamp every CSV export with a header block: app version, model name and
-  content hash, solver and tolerance, all parameter values, date.
-- Add a schema version to both file formats, with migrations, so old files
-  keep opening.
-- A "run record" export: one file bundling the model, the result and the
-  provenance block.
+**Status: done.** Every CSV export begins with a header recording the app
+version, the model's name and fingerprint, solver settings, all parameter
+values, the equations, and the experiment design where there is one; the
+header is skipped on import, so files round-trip. Both file formats carry a
+format version, and a file from a newer version is refused with an
+explanation. *Run record* exports the model, result and provenance as one
+file.
 
 ### 6. Work is locked into one tool
 
@@ -196,14 +184,13 @@ per person per year. The figures are self-reported.
 *Evidence: peer-reviewed survey ([LeBlanc et al., PLoS ONE][formatting]); it
 does not separate out figure work.*
 
-**Today.** Charts cannot be exported at all (only their data). Equations can
-be copied as LaTeX from Equation Flows but not from a simulation.
-
-**Proposal — publication export (M).**
-- Export any chart as SVG, PDF or PNG at a chosen physical size and font size,
-  with colour and greyscale-safe styles.
-- Copy a simulation's equations, parameter table and solver settings as LaTeX
-  or Markdown — in effect a generated "methods" paragraph.
+**Status: mostly done.** Line charts export as SVG (vector) or PNG (3×) from
+buttons that appear on hover; the export is standalone, with a white
+background and legend, and leaves out the playback cursor. *Copy as LaTeX /
+Markdown* produces the equations, initial conditions, a parameter table and a
+sentence describing the numerical method. **Still open:** exporting heat maps
+and 3D views as images, PDF output, and choosing a figure's physical size and
+font size.
 
 ### 10. Visual models that cannot be compared or do not scale
 
@@ -263,16 +250,16 @@ free of UI code, which makes this mostly packaging.
 
 ---
 
-## Suggested order
+## Suggested order for what remains
 
-1. Items 1, 2 and 5 together — small, and they change what a result from this
-   tool is worth.
-2. Item 4 — closes the gap between the two workspaces.
-3. Items 3 and 8 — make failures and fits explain themselves.
-4. Item 9 — the most visible time-saver.
-5. Items 7 and 6 — larger, and the point where the tool starts to stand in for
-   scripted work.
-6. Items 10, 11, 12 as the user base and model sizes grow.
+Done: items 1, 2, 5 and 6; item 9 mostly.
+
+1. Item 4 — unit checking in simulations; closes the gap between the two
+   workspaces.
+2. Items 3 and 8 — make failures and fits explain themselves.
+3. Item 7 — global sensitivity and uncertainty propagation.
+4. The rest of item 9 — images of heat maps and 3D views, figure sizing.
+5. Items 10, 11, 12 as the user base and model sizes grow.
 
 ## Sources
 

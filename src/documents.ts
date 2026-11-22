@@ -7,6 +7,8 @@ import { currentDoc, markSaved, useFlow } from './flow/store';
 import { createHistory, type History } from './history';
 import type { FlowDoc } from './flow/types';
 import { useNav } from './nav';
+import { saveFile } from './saveFile';
+import { APP_VERSION, FILE_FORMAT } from './version';
 import { blankModel, isModel, markSimSaved, useSim } from './sim/store';
 
 export type DocKind = 'sim' | 'flow';
@@ -18,7 +20,7 @@ const KINDS = {
     state: () => useSim.getState(),
     name: () => useSim.getState().model.name,
     hasContent: () => true,
-    serialize: () => JSON.stringify(useSim.getState().model, null, 2),
+    serialize: () => JSON.stringify({ format: FILE_FORMAT, app: APP_VERSION, ...useSim.getState().model }, null, 2),
     mark: markSimSaved,
     fail: (notice: string) => useSim.setState({ notice }),
   },
@@ -28,7 +30,7 @@ const KINDS = {
     state: () => useFlow.getState(),
     name: () => useFlow.getState().name,
     hasContent: () => useFlow.getState().nodes.length > 0,
-    serialize: () => JSON.stringify(currentDoc(), null, 2),
+    serialize: () => JSON.stringify({ format: FILE_FORMAT, app: APP_VERSION, ...currentDoc() }, null, 2),
     mark: markSaved,
     fail: (notice: string) => useFlow.setState({ notice }),
   },
@@ -83,9 +85,15 @@ export function loadOpened(file: OpenedFile) {
   } catch {
     return KINDS[active].fail(`“${baseName(file.path)}” is not a Physics Tooling document.`);
   }
+  // Files record the format they were written in, so a newer file is refused clearly instead of half-loading.
+  const format = (data as { format?: unknown })?.format;
+  if (typeof format === 'number' && format > FILE_FORMAT) {
+    return KINDS[active].fail(`“${baseName(file.path)}” was saved by a newer version of Physics Tooling (file format ${format}; this version reads up to ${FILE_FORMAT}). Update the app to open it.`);
+  }
   if (isModel(data)) {
     if (!confirmDiscard('sim')) return;
-    useSim.getState().load(data);
+    const { format: _f, app: _a, ...model } = data as typeof data & { format?: number; app?: string };
+    useSim.getState().load(model as typeof data);
     markSimSaved(file.path);
     histories.sim.reset();
     useNav.getState().setTab('sim');
@@ -157,25 +165,14 @@ export async function saveDocument(kind: DocKind, saveAs = false) {
 
 /** Export tabular data as CSV. Resolves to a short confirmation, or '' if cancelled. */
 export async function exportCsv(text: string, suggestedName: string): Promise<string> {
-  const name = suggestedName.replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'data';
-  if (desktop) {
-    const saved = await desktop.exportFile(text, name, 'csv');
-    return saved ? `Exported to ${baseName(saved)}` : '';
-  }
-  download(text, `${name}.csv`, 'text/csv');
-  return 'Exported';
+  const saved = await saveFile(text, suggestedName, 'csv');
+  return saved ? `Exported to ${saved}` : '';
 }
 
 /** Save a generated script through the Save dialog (or as a download in the browser). */
 export async function exportScript(text: string, suggestedName: string, ext: 'py' | 'm' | 'wl' | 'jl'): Promise<string> {
-  // Script names double as identifiers in some languages, so keep them plain.
-  const name = suggestedName.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'model';
-  if (desktop) {
-    const saved = await desktop.exportFile(text, name, ext);
-    return saved ? `Saved ${baseName(saved)}` : '';
-  }
-  download(text, `${name}.${ext}`, 'text/plain');
-  return 'Saved';
+  const saved = await saveFile(text, suggestedName, ext);
+  return saved ? `Saved ${saved}` : '';
 }
 
 /** The document kind the File menu acts on for the current workspace. */

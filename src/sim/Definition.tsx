@@ -1,12 +1,13 @@
-import { parse } from 'mathjs';
 import { useMemo, useState } from 'react';
 import { symbolToLatex } from '../core/expr';
-import type { OdeModel, SolverMethod } from '../core/ode';
+import { MEASURES } from '../core/measure';
+import type { Expectation, OdeModel, SolverMethod } from '../core/ode';
 import { confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
 import { NumberField } from '../components/NumberField';
 import { Tex } from '../components/Tex';
 import { UndoRedo } from '../components/UndoRedo';
 import { MODELS } from './models';
+import { exprTex } from './tex';
 import { markSimSaved, useSim } from './store';
 
 function Section({ title, count, children, defaultOpen = true, action }: {
@@ -30,13 +31,7 @@ function Section({ title, count, children, defaultOpen = true, action }: {
 
 /** Typeset the system exactly as the solver will integrate it. */
 function equationsTex(model: OdeModel): string[] {
-  const tex = (expr: string) => {
-    try {
-      return parse(expr).toTex({ parenthesis: 'auto' });
-    } catch {
-      return `\\text{${expr.replace(/[\\{}$&#^_%~]/g, ' ')}}`;
-    }
-  };
+  const tex = exprTex;
   return [
     ...model.states.map((s) => `\\dfrac{\\mathrm{d}${symbolToLatex(s.name)}}{\\mathrm{d}t} = ${tex(s.deriv)}`),
     ...model.derived.map((d) => `${symbolToLatex(d.name)} = ${tex(d.expr)}`),
@@ -190,6 +185,41 @@ export function Definition() {
           })}
           <button className="btn small" onClick={() => patch({ events: [...(model.events ?? []), { when: '', then: '' }] })}>+ Event</button>
           <p className="muted help">An event fires at the instant its condition turns true (located inside the step) and resets state variables — bounces, kicks, switching. Separate several resets with <code>;</code>; every right-hand side uses the values just before the event.</p>
+        </Section>
+
+        <Section title="Expectations" count={model.expectations?.length ?? 0} defaultOpen={!!model.expectations?.length}>
+          {(model.expectations ?? []).map((ex, i) => {
+            const setEx = (p: Partial<Expectation>) => patch({ expectations: model.expectations!.map((e, j) => (j === i ? { ...e, ...p } : e)) });
+            return (
+              <div className="ed-block" key={i}>
+                <div className="ed-row">
+                  <select value={ex.measure} onChange={(e) => setEx({ measure: e.target.value as Expectation['measure'] })} aria-label={`Measure of expectation ${i + 1}`}>
+                    {MEASURES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                  <span className="muted">of</span>
+                  <select value={ex.observable} onChange={(e) => setEx({ observable: e.target.value })} aria-label={`Quantity of expectation ${i + 1}`}>
+                    {[...model.states.map((s) => s.name), ...model.derived.map((d) => d.name)].map((n) => <option key={n}>{n}</option>)}
+                  </select>
+                  <button className="btn icon" title="Remove expectation" onClick={() => patch({ expectations: model.expectations!.filter((_, j) => j !== i) })}>×</button>
+                </div>
+                <div className="ed-row">
+                  <select value={ex.compare} onChange={(e) => setEx({ compare: e.target.value as Expectation['compare'] })} aria-label={`Comparison of expectation ${i + 1}`}>
+                    <option value="equals">equals</option>
+                    <option value="atMost">is at most</option>
+                    <option value="atLeast">is at least</option>
+                  </select>
+                  <NumberField className="code" value={ex.value} onChange={(value) => setEx({ value })} label={`Value of expectation ${i + 1}`} />
+                  {ex.compare === 'equals' && (
+                    <>
+                      <span className="muted">±</span>
+                      <NumberField className="code" value={ex.tolerance ?? 0} onChange={(tolerance) => setEx({ tolerance })} label={`Tolerance of expectation ${i + 1}`} />
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <p className="muted help">Statements a correct run must satisfy — a known period, a conserved energy, a landing time. They are checked on every run, so an edit that breaks known behaviour shows up at once. Add them from the Measurements table in the Run view.</p>
         </Section>
 
         <Section title="Solver">

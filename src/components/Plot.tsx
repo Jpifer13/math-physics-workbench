@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { saveFile } from '../saveFile';
 import { fmtNum } from '../core/units';
 import { makeScale, padExtent, robustExtent, tickLabel } from './scale';
 import { useWidth } from './useSize';
@@ -37,14 +38,96 @@ interface Props {
   xDomain?: [number, number];
   yDomain?: [number, number];
   empty?: string;
+  /** Base name for exported image files; defaults to the axis labels. */
+  exportName?: string;
 }
 
 const M = { top: 12, right: 16, bottom: 40, left: 62 };
 export const seriesColor = (slot: number) => `var(--series-${((slot - 1) % 8) + 1})`;
 
+const STYLE_PROPS = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'font-size', 'font-family', 'font-weight', 'opacity', 'fill-opacity', 'paint-order'];
+
+/**
+ * A standalone SVG of a chart: styles that live in the app's stylesheet are
+ * written onto each element, a white background and the legend are added, so
+ * the file looks the same in a paper, a slide or a vector editor.
+ */
+function standaloneSvg(svg: SVGSVGElement, legend: { name: string; color: string; dashed?: boolean; points?: boolean }[]): { text: string; width: number; height: number } {
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  const from = [svg, ...svg.querySelectorAll('*')];
+  const to = [clone, ...clone.querySelectorAll('*')];
+  from.forEach((el, i) => {
+    const cs = getComputedStyle(el);
+    for (const p of STYLE_PROPS) {
+      const v = cs.getPropertyValue(p);
+      if (v) (to[i] as SVGElement).style.setProperty(p, v);
+    }
+    to[i].removeAttribute('class');
+    // Colours given as stylesheet variables mean nothing outside the app; the resolved value is in the style.
+    for (const a of ['fill', 'stroke']) if (to[i].getAttribute(a)?.includes('var(')) to[i].removeAttribute(a);
+  });
+  // The playback cursor and hover read-out belong to the moment, not to the figure.
+  clone.querySelectorAll('[data-live]').forEach((el) => el.remove());
+  const width = svg.width.baseVal.value;
+  const rowH = 18;
+  const top = legend.length > 1 ? legend.length * rowH + 6 : 0;
+  const height = svg.height.baseVal.value + top;
+  const ns = 'http://www.w3.org/2000/svg';
+  const root = document.createElementNS(ns, 'svg');
+  root.setAttribute('xmlns', ns);
+  root.setAttribute('width', String(width));
+  root.setAttribute('height', String(height));
+  root.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  const bg = document.createElementNS(ns, 'rect');
+  bg.setAttribute('width', '100%');
+  bg.setAttribute('height', '100%');
+  bg.setAttribute('fill', '#ffffff');
+  root.appendChild(bg);
+  if (top) {
+    const font = getComputedStyle(svg).fontFamily;
+    legend.forEach((l, i) => {
+      const y = 12 + i * rowH;
+      const mark = document.createElementNS(ns, l.points ? 'circle' : 'line');
+      if (l.points) { mark.setAttribute('cx', '74'); mark.setAttribute('cy', String(y)); mark.setAttribute('r', '3'); mark.setAttribute('fill', l.color); }
+      else {
+        mark.setAttribute('x1', '62'); mark.setAttribute('x2', '86'); mark.setAttribute('y1', String(y)); mark.setAttribute('y2', String(y));
+        mark.setAttribute('stroke', l.color); mark.setAttribute('stroke-width', '2');
+        if (l.dashed) mark.setAttribute('stroke-dasharray', '6 4');
+      }
+      const text = document.createElementNS(ns, 'text');
+      text.setAttribute('x', '94'); text.setAttribute('y', String(y + 4));
+      text.setAttribute('font-size', '12'); text.setAttribute('font-family', font); text.setAttribute('fill', '#484644');
+      text.textContent = l.name;
+      root.append(mark, text);
+    });
+  }
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('transform', `translate(0 ${top})`);
+  while (clone.firstChild) g.appendChild(clone.firstChild);
+  root.appendChild(g);
+  return { text: new XMLSerializer().serializeToString(root), width, height };
+}
+
+/** Rasterise an SVG at `scale` times its size (3 ≈ 300 dpi at typical figure widths). */
+function svgToPng(svg: { text: string; width: number; height: number }, scale: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(svg.width * scale);
+      canvas.height = Math.round(svg.height * scale);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+    };
+    img.onerror = () => reject(new Error('The chart could not be rendered as an image'));
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.text)}`;
+  });
+}
+
 export function Plot({
   series, xLabel, yLabel, logX = false, logY = false, height = 260, equal, markers = [], cursorX,
-  hover = true, xDomain, yDomain, empty = 'Nothing to plot yet',
+  hover = true, xDomain, yDomain, empty = 'Nothing to plot yet', exportName,
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hoverX, setHoverX] = useState<number | null>(null);
@@ -113,6 +196,27 @@ export function Plot({
   }, [hoverX, hover, series, sx]);
   const anchor = hoverPts.find(Boolean) ?? null;
 
+  const exportImage = async (kind: 'svg' | 'png') => {
+    const svg = ref.current?.querySelector('svg');
+    if (!svg) return;
+    const sample = document.createElement('span');
+    ref.current!.appendChild(sample);
+    const legend = series.map((s, i) => {
+      // Resolve the palette variable to the colour actually in use.
+      sample.style.color = seriesColor(s.slot ?? i + 1);
+      return { name: s.name, color: getComputedStyle(sample).color, dashed: s.dashed, points: s.points };
+    });
+    sample.remove();
+    const image = standaloneSvg(svg, legend);
+    const name = exportName ?? ([yLabel, xLabel].filter(Boolean).join(' vs ') || 'chart');
+    try {
+      if (kind === 'svg') await saveFile(image.text, name, 'svg');
+      else await saveFile(await svgToPng(image, 3), name, 'png', 'base64');
+    } catch {
+      /* cancelled or failed; nothing to clean up */
+    }
+  };
+
   const clipId = useMemo(() => `clip-${Math.random().toString(36).slice(2)}`, []);
   const tipLeft = anchor ? px(anchor.x) : 0;
 
@@ -126,6 +230,12 @@ export function Plot({
         </div>
       )}
       <div className="plot" style={{ height }}>
+      {hasData && (
+        <div className="plot-export" role="group" aria-label="Export this chart">
+          <button title="Save as a vector image (SVG) — scales cleanly in papers and slides" onClick={() => void exportImage('svg')}>SVG</button>
+          <button title="Save as a high-resolution image (PNG, 3×)" onClick={() => void exportImage('png')}>PNG</button>
+        </div>
+      )}
       <svg
         width={width}
         height={height}
@@ -189,11 +299,11 @@ export function Plot({
             return <g key={`pts${i}`} fill={seriesColor(s.slot ?? i + 1)} fillOpacity={0.75}>{dots}</g>;
           })}
           {cursorX !== undefined && Number.isFinite(px(cursorX)) && (
-            <line className="plot-cursor" x1={px(cursorX)} x2={px(cursorX)} y1={M.top} y2={M.top + ih} />
+            <line className="plot-cursor" data-live x1={px(cursorX)} x2={px(cursorX)} y1={M.top} y2={M.top + ih} />
           )}
-          {anchor && <line className="plot-cursor" x1={px(anchor.x)} x2={px(anchor.x)} y1={M.top} y2={M.top + ih} />}
+          {anchor && <line className="plot-cursor" data-live x1={px(anchor.x)} x2={px(anchor.x)} y1={M.top} y2={M.top + ih} />}
           {hoverPts.map((p, i) =>
-            p ? <circle key={i} cx={px(p.x)} cy={py(p.y)} r={4.5} fill={seriesColor(series[i].slot ?? i + 1)} className="plot-dot" /> : null,
+            p ? <circle key={i} data-live cx={px(p.x)} cy={py(p.y)} r={4.5} fill={seriesColor(series[i].slot ?? i + 1)} className="plot-dot" /> : null,
           )}
           {markers.map((m, i) =>
             Number.isFinite(px(m.x)) && Number.isFinite(py(m.y)) ? (

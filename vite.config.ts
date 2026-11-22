@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import pkg from './package.json' with { type: 'json' };
 
 /**
  * The packaged app loads from disk and never needs the network, so lock it
@@ -27,6 +28,8 @@ function contentSecurityPolicy(): Plugin {
 
 export default defineConfig({
   plugins: [react(), contentSecurityPolicy()],
+  // The app version, stamped into saved files and exports.
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   // Relative asset paths so the build works when loaded from the app bundle (file://).
   base: './',
 });

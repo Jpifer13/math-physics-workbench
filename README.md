@@ -33,6 +33,12 @@ view on the left and every edit re-runs immediately.
 - **Run** — animated picture or rotatable 3D trajectory (hover to read values), phase portrait, time
   series, and a measurement table (final, min, max, time average, period for
   every quantity).
+- **Check accuracy** — one click re-runs the model with tighter numerics and
+  with a different method and reports how far each quantity moves, so you know
+  whether a result has converged before you rely on it.
+- **Expectations** — statements a correct run must satisfy (a known period, a
+  conserved energy), saved with the model and checked on every run. Click a
+  value in the measurement table to create one.
 - **Compare** — hold a run as a dashed reference, change the model, and see
   both on every chart.
 - **Experiment** — vary one parameter (or two) across a range, run the
@@ -55,7 +61,11 @@ view on the left and every edit re-runs immediately.
   and a button to apply the result. The imported data is saved in the
   simulation file.
 - **Undo / redo** for every edit to a simulation or a flow.
-- **Export** — any run or experiment as CSV at full double precision.
+- **Export** — any run or experiment as CSV at full double precision, with a
+  header recording the app version, model, parameters and solver that produced
+  it. A *run record* bundles model, result and provenance in one file. Line
+  charts save as SVG or PNG, and the model's equations, parameter table and
+  method description copy as LaTeX or Markdown.
 - **Other software** — export the model as a script for Python (SciPy), MATLAB
   or Octave, Mathematica, or Julia; or run it in one you have installed and
   compare the result with this app's own, as an independent check. See
@@ -69,6 +79,8 @@ Simulations save as `.physsim` (plain JSON).
 ![Fitting two series with error bars](docs/simulation-fit.png)
 
 ![Exporting a model to Python and comparing the two solutions](docs/other-software.png)
+
+![Expectations catching a change that breaks known behaviour](docs/simulation-expectations.png)
 
 ![A bouncing ball: discrete events resetting the state](docs/simulation-events.png)
 
@@ -193,6 +205,7 @@ src/
     fastExpr.ts   Compiles model expressions to closures for the inner loop
     measure.ts    Run measurements, parameter scans, CSV export
     fit.ts        Data import, interpolation, Nelder–Mead, least-squares fitting
+    trust.ts      Run comparison, accuracy report, expectations, provenance
     numeric.ts    Derivative, Simpson integration, root and extremum finding
   components/   Plot (SVG line chart), Heatmap, Plot3D (three.js, lazy-loaded),
                 KaTeX wrapper, number field

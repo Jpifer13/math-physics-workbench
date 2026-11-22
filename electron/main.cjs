@@ -15,6 +15,9 @@ const DOC_TYPES = {
   physsim: { name: 'Physics simulation', extensions: ['physsim'] },
   physflow: { name: 'Physics equation flow', extensions: ['physflow'] },
   csv: { name: 'Comma-separated values', extensions: ['csv'] },
+  json: { name: 'JSON', extensions: ['json'] },
+  svg: { name: 'SVG vector image', extensions: ['svg'] },
+  png: { name: 'PNG image', extensions: ['png'] },
   py: { name: 'Python script', extensions: ['py'] },
   m: { name: 'MATLAB / Octave script', extensions: ['m'] },
   wl: { name: 'Wolfram Language script', extensions: ['wl'] },
@@ -116,16 +119,16 @@ ipcMain.handle('import:open', async () => {
 });
 
 // Data exports always go through a Save dialog; they are never tied to an open document.
-ipcMain.handle('export:save', async (_e, text, suggestedName, ext) => {
+ipcMain.handle('export:save', async (_e, text, suggestedName, ext, encoding) => {
   if (typeof text !== 'string') throw new Error('Nothing to export');
   const type = DOC_TYPES[ext] ?? DOC_TYPES.csv;
   const r = await dialog.showSaveDialog(win, {
-    title: 'Export data',
+    title: 'Export',
     defaultPath: `${safeName(suggestedName, 'data')}.${type.extensions[0]}`,
     filters: [type],
   });
   if (r.canceled || !r.filePath) return null;
-  await fs.promises.writeFile(r.filePath, text, 'utf8');
+  await fs.promises.writeFile(r.filePath, text, encoding === 'base64' ? 'base64' : 'utf8');
   return r.filePath;
 });
 

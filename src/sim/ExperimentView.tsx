@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MEASURES, measureRun, scanValues, scanValues2, toCsv, type ScanConfig } from '../core/measure';
 import { simulate, type OdeModel, type SimResult } from '../core/ode';
+import { provenance } from '../core/trust';
 import { fmtNum } from '../core/units';
+import { APP_VERSION } from '../version';
 import { exportCsv } from '../documents';
 import { Heatmap } from '../components/Heatmap';
 import { NumberField } from '../components/NumberField';
@@ -161,7 +163,7 @@ export function ExperimentView({ model, run }: { model: OdeModel; run: SimResult
         ]
       : [{ name: xLabel, values: r.x }, { name: yLabel, values: r.y }];
     try {
-      setStatus(await exportCsv(toCsv(cols), `${model.name} ${r.config.param}${r.x2 ? ` ${r.config.param2}` : ''} scan`));
+      setStatus(await exportCsv(toCsv(cols, provenance(model, { appVersion: APP_VERSION, when: new Date().toISOString(), experiment: r.config })), `${model.name} ${r.config.param}${r.x2 ? ` ${r.config.param2}` : ''} scan`));
     } catch (err) {
       setStatus(`Export failed: ${err instanceof Error ? err.message : err}`);
     }
