@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { fmtNum } from '../core/units';
 import { makeScale, tickLabel } from './scale';
 import { useWidth } from './useSize';
 
@@ -108,6 +109,39 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
   const host = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
   const mapRef = useRef<(p: Vec3) => THREE.Vector3>(() => new THREE.Vector3());
+  // For hover readouts: scene → data coordinates, the surface mesh, and the path samples.
+  const unmapRef = useRef<(v: THREE.Vector3) => Vec3>(() => [0, 0, 0]);
+  const surfaceRef = useRef<THREE.Mesh | null>(null);
+  const pathRef = useRef<{ data: Vec3; at: THREE.Vector3 }[]>([]);
+  const [tip, setTip] = useState<{ left: number; top: number; lines: string[] } | null>(null);
+
+  const onHover = (e: React.PointerEvent<HTMLDivElement>) => {
+    const s = stage.current;
+    // No readout while orbiting.
+    if (!s || e.buttons !== 0) return setTip(null);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    let hit: Vec3 | null = null;
+    if (surfaceRef.current) {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2((px / rect.width) * 2 - 1, -(py / rect.height) * 2 + 1), s.camera);
+      const found = ray.intersectObject(surfaceRef.current, false)[0];
+      if (found) hit = unmapRef.current(found.point);
+    } else {
+      // Nearest path sample on screen, within a small radius.
+      let best = 14 * 14;
+      const v = new THREE.Vector3();
+      for (const p of pathRef.current) {
+        v.copy(p.at).project(s.camera);
+        const dx = ((v.x + 1) / 2) * rect.width - px;
+        const dy = ((1 - v.y) / 2) * rect.height - py;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best && v.z < 1) { best = d2; hit = p.data; }
+      }
+    }
+    setTip(hit ? { left: px, top: py, lines: hit.map((val, i) => `${labels[i]}: ${fmtNum(val, 5)}`) } : null);
+  };
 
   // One-time scene setup.
   useEffect(() => {
@@ -189,6 +223,11 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
         -(((p[1] - dy[0]) / (dy[1] - dy[0])) * 2 - 1) * hy,
       );
     mapRef.current = map;
+    unmapRef.current = (v) => [
+      dx[0] + ((v.x / hx + 1) / 2) * (dx[1] - dx[0]),
+      dy[0] + ((-v.z / hy + 1) / 2) * (dy[1] - dy[0]),
+      dz[0] + ((v.y / hz + 1) / 2) * (dz[1] - dz[0]),
+    ];
 
     // The frame (box, grid, tick labels) is rebuilt only when the ranges change.
     // Label offsets are in scene units, so push them further out in short panels where text is relatively larger.
@@ -242,6 +281,8 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
     dispose(s.content);
     s.content.clear();
     s.solid = [];
+    surfaceRef.current = null;
+    pathRef.current = [];
 
     if (surface && surface.xs.length > 1 && surface.ys.length > 1) {
       const nx = surface.xs.length;
@@ -276,7 +317,9 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
       geo.setIndex(index);
       geo.computeVertexNormals();
-      s.content.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+      s.content.add(mesh);
+      surfaceRef.current = mesh;
 
       // A sparse mesh of grid lines makes the shape readable from any angle.
       const wire: number[] = [];
@@ -296,6 +339,7 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
         if (!p.every(Number.isFinite)) continue;
         const v = map(p);
         flat.push(v.x, v.y, v.z);
+        pathRef.current.push({ data: p, at: v });
       }
       if (flat.length < 6) continue;
       const color = new THREE.Color(cssVar(`--series-${((l.slot ?? li + 1) - 1) % 8 + 1}`) || '#2a78d6');
@@ -339,9 +383,14 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
   });
 
   return (
-    <div ref={wrap} className="plot3d" style={{ height }}>
+    <div ref={wrap} className="plot3d" style={{ height }} onPointerMove={onHover} onPointerLeave={() => setTip(null)}>
       <div ref={host} className="plot3d-host" role="img" aria-label={`3-D chart of ${labels[2]} over ${labels[0]} and ${labels[1]}`} />
-      <span className="plot3d-hint">Drag to rotate · scroll to zoom</span>
+      <span className="plot3d-hint">Drag to rotate · scroll to zoom · hover to read values</span>
+      {tip && (
+        <div className="plot-tip" style={tip.left > width * 0.6 ? { right: width - tip.left + 14, top: tip.top + 10 } : { left: tip.left + 14, top: tip.top + 10 }}>
+          {tip.lines.map((l, i) => <div key={i} className={i === 2 ? 'plot-tip-strong' : undefined}>{l}</div>)}
+        </div>
+      )}
     </div>
   );
 }

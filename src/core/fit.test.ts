@@ -48,12 +48,12 @@ describe('model fitting', () => {
       t.push(truth.t[i]);
       y.push(truth.series.x[i] + 0.01 * Math.sin(i * 12.9898) * Math.cos(i * 78.233));
     }
-    const fit = fitModel({ model, params: ['k', 'b'], observable: 'x', data: { t, y } });
+    const fit = fitModel({ model, params: ['k', 'b'], targets: [{ observable: 'x', ...{ t, y } }] });
     expect(fit.values.k).toBeCloseTo(4.3, 1);
     expect(fit.values.b).toBeCloseTo(0.22, 1);
-    expect(fit.after.rms).toBeLessThan(0.02);
-    expect(fit.after.rms).toBeLessThan(fit.before.rms / 10);
-    expect(fit.after.r2).toBeGreaterThan(0.99);
+    expect(fit.targets[0].after.rms).toBeLessThan(0.02);
+    expect(fit.targets[0].after.rms).toBeLessThan(fit.targets[0].before.rms / 10);
+    expect(fit.targets[0].after.r2).toBeGreaterThan(0.99);
   });
   const noisy = (k: number, b: number) => {
     const truth = simulate(model, { k, b });
@@ -65,7 +65,7 @@ describe('model fitting', () => {
     return { t, y };
   };
   it('reports uncertainties that bracket the truth, and correlations', () => {
-    const fit = fitModel({ model, params: ['k', 'b'], observable: 'x', data: noisy(4.3, 0.22) });
+    const fit = fitModel({ model, params: ['k', 'b'], targets: [{ observable: 'x', ...noisy(4.3, 0.22) }] });
     expect(fit.errors.k).toBeGreaterThan(0);
     expect(fit.errors.k).toBeLessThan(0.05);
     expect(Math.abs(fit.values.k - 4.3)).toBeLessThan(5 * fit.errors.k);
@@ -76,7 +76,7 @@ describe('model fitting', () => {
   it('flags parameters the data cannot separate', () => {
     // Only the product k = a * c enters the dynamics, so a and c are perfectly anticorrelated.
     const degenerate = { ...model, states: [model.states[0], { ...model.states[1], deriv: '-a*c*x - b*v' }], params: [{ name: 'a', value: 2, min: 0, max: 10 }, { name: 'c', value: 1.5, min: 0, max: 10 }, model.params[1]] };
-    const fit = fitModel({ model: degenerate, params: ['a', 'c'], observable: 'x', data: noisy(4.3, 0.5) });
+    const fit = fitModel({ model: degenerate, params: ['a', 'c'], targets: [{ observable: 'x', ...noisy(4.3, 0.5) }] });
     const r = fit.correlation[0][1];
     expect(Number.isNaN(r) || r < -0.99).toBe(true);
     expect(fit.values.a * fit.values.c).toBeCloseTo(4.3, 1);
@@ -86,24 +86,47 @@ describe('model fitting', () => {
     const far = { ...model, tEnd: 30, params: [{ ...model.params[0], value: 7.5 }, { ...model.params[1], value: 0.05 }] };
     const truth = simulate(far, { k: 4.3, b: 0.05 });
     const data = { t: truth.t.filter((_, i) => i % 6 === 0), y: truth.series.x.filter((_, i) => i % 6 === 0) };
-    const local = fitModel({ model: far, params: ['k'], observable: 'x', data, survey: false });
-    const global = fitModel({ model: far, params: ['k'], observable: 'x', data });
+    const local = fitModel({ model: far, params: ['k'], targets: [{ observable: 'x', ...data }], survey: false });
+    const global = fitModel({ model: far, params: ['k'], targets: [{ observable: 'x', ...data }] });
     expect(Math.abs(local.values.k - 4.3)).toBeGreaterThan(0.5);
     expect(global.values.k).toBeCloseTo(4.3, 3);
-    expect(global.after.rms).toBeLessThan(1e-3);
+    expect(global.targets[0].after.rms).toBeLessThan(1e-3);
   });
   it('respects bounds when asked to', () => {
     const tight = { ...model, params: [{ ...model.params[0], min: 2, max: 3.5 }, model.params[1]] };
-    const fit = fitModel({ model: tight, params: ['k', 'b'], observable: 'x', data: noisy(4.3, 0.22), bounded: true });
+    const fit = fitModel({ model: tight, params: ['k', 'b'], targets: [{ observable: 'x', ...noisy(4.3, 0.22) }], bounded: true });
     expect(fit.values.k).toBeLessThanOrEqual(3.5);
     expect(fit.values.k).toBeGreaterThan(3.3);
+  });
+  it('fits several observables together and uses error bars', () => {
+    // Position alone barely constrains the damping over a short record; velocity data add to it.
+    const truth = simulate(model, { k: 4.3, b: 0.22 });
+    const pick = (arr: number[]) => arr.filter((_, i) => i % 8 === 0);
+    const noise = (i: number, s: number) => s * Math.sin(i * 12.9898) * Math.cos(i * 78.233);
+    const t = pick(truth.t);
+    const x = pick(truth.series.x).map((v, i) => v + noise(i, 0.01));
+    const v = pick(truth.series.v).map((val, i) => val + noise(i + 7, 0.05));
+    const both = fitModel({
+      model, params: ['k', 'b'],
+      targets: [{ observable: 'x', t, y: x, sigma: t.map(() => 0.007) }, { observable: 'v', t, y: v, sigma: t.map(() => 0.035) }],
+    });
+    expect(both.values.k).toBeCloseTo(4.3, 1);
+    expect(both.values.b).toBeCloseTo(0.22, 1);
+    expect(both.targets.map((r) => r.observable)).toEqual(['x', 'v']);
+    expect(both.targets[1].after.rms).toBeLessThan(both.targets[1].before.rms / 5);
+    // Honest error bars give a reduced chi-squared near one, and absolute uncertainties.
+    expect(both.reducedChi2!).toBeGreaterThan(0.3);
+    expect(both.reducedChi2!).toBeLessThan(3);
+    expect(Math.abs(both.values.k - 4.3)).toBeLessThan(5 * both.errors.k);
+    // Without error bars there is no chi-squared to report.
+    expect(fitModel({ model, params: ['k'], targets: [{ observable: 'x', t, y: x }] }).reducedChi2).toBeUndefined();
   });
   it('inverts small matrices and detects singular ones', () => {
     expect(invert([[2, 0], [0, 4]])).toEqual([[0.5, 0], [0, 0.25]]);
     expect(invert([[1, 2], [2, 4]])).toBeNull();
   });
   it('explains why a fit cannot run', () => {
-    expect(() => fitModel({ model, params: [], observable: 'x', data: { t: [0, 1, 2], y: [1, 0, 1] } })).toThrow(/at least one/);
-    expect(() => fitModel({ model, params: ['k'], observable: 'nope', data: { t: [0, 1, 2], y: [1, 0, 1] } })).toThrow(/no values/);
+    expect(() => fitModel({ model, params: [], targets: [{ observable: 'x', t: [0, 1, 2], y: [1, 0, 1] }] })).toThrow(/at least one/);
+    expect(() => fitModel({ model, params: ['k'], targets: [{ observable: 'nope', t: [0, 1, 2], y: [1, 0, 1] }] })).toThrow(/no values/);
   });
 });

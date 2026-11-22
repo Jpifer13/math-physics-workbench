@@ -13,6 +13,9 @@ export interface Task<T> {
   cancel: () => void;
 }
 
+/** Workers only need the equations; leave bulky attachments (imported data, notes) behind. */
+const lean = (model: OdeModel): OdeModel => ({ ...model, data: undefined, notes: undefined });
+
 const spawn = () => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 const poolSize = (jobs: number) => Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1, jobs));
 
@@ -58,7 +61,7 @@ export function runJobs(
         // A worker that cannot start (e.g. blocked by the platform) sends us back to the main thread once.
         w.onerror = () => { if (!failed && !cancelled) { failed = true; fallback(); } };
         const jobs = overrides.map((o, index) => ({ index, overrides: o })).filter((_, i) => i % n === k);
-        w.postMessage({ type: 'scan', model, jobs, observable, measure } satisfies WorkerRequest);
+        w.postMessage({ type: 'scan', model: lean(model), jobs, observable, measure } satisfies WorkerRequest);
       });
     } catch {
       fallback();
@@ -80,7 +83,7 @@ export function runFit(request: FitRequest): Task<FitResult> {
         else reject(new Error(e.data.message ?? 'The fit failed'));
       };
       worker.onerror = () => { worker?.terminate(); onMain(); };
-      worker.postMessage({ type: 'fit', request } satisfies WorkerRequest);
+      worker.postMessage({ type: 'fit', request: { ...request, model: lean(request.model) } } satisfies WorkerRequest);
     } catch {
       onMain();
     }

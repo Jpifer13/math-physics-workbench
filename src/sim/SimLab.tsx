@@ -19,9 +19,9 @@ export function SimLab() {
   const [view, setView] = useState<(typeof VIEWS)[number]['id']>('run');
 
   // Display-only settings don't change the numbers, so they shouldn't trigger a re-run.
-  const { states, params, derived, tEnd, dt, method, tol, stopWhen } = model;
+  const { states, params, derived, tEnd, dt, method, tol, stopWhen, events } = model;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const run = useMemo(() => simulate(model), [states, params, derived, tEnd, dt, method, tol, stopWhen]);
+  const run = useMemo(() => simulate(model), [states, params, derived, tEnd, dt, method, tol, stopWhen, events]);
 
   return (
     <div className="sim-layout">

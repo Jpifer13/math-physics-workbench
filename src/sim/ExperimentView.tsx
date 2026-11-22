@@ -39,7 +39,7 @@ const basisOf = (model: OdeModel, c: ScanConfig) =>
   JSON.stringify([
     c, model.states, model.derived,
     model.params.map((p) => (p.name === c.param || (is2D(c) && p.name === c.param2) ? p.name : [p.name, p.value])),
-    model.tEnd, model.dt, model.method, model.tol, model.stopWhen,
+    model.tEnd, model.dt, model.method, model.tol, model.stopWhen, model.events,
   ]);
 
 /**

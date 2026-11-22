@@ -56,6 +56,23 @@ export interface ScanConfig {
   points2?: number;
 }
 
+/** Measured data kept with a model, and how its columns map onto the model's observables. */
+export interface ModelData {
+  name: string;
+  columns: { name: string; values: number[] }[];
+  timeCol: number;
+  /** Each measured column to compare, the observable it corresponds to, and an optional error-bar column. */
+  pairs: { valueCol: number; observable: string; sigmaCol?: number }[];
+}
+
+/** A discrete event: when `when` becomes true, apply the assignments in `then` to the state. */
+export interface SimEvent {
+  /** Condition; the event fires at the moment it turns from false to true. */
+  when: string;
+  /** Assignments to state variables, separated by `;` — e.g. `vy = -e * vy`. All right-hand sides use the pre-event state. */
+  then: string;
+}
+
 export interface OdeModel {
   id: string;
   name: string;
@@ -72,6 +89,8 @@ export interface OdeModel {
   tol?: number;
   /** Stop the run early when this expression becomes true (e.g. "y < 0"). */
   stopWhen?: string;
+  /** Discrete events that reset state variables (bounces, kicks, switching). */
+  events?: SimEvent[];
   scene?: Scene;
   /** Default variables to chart. */
   timeSeries: string[];
@@ -80,6 +99,8 @@ export interface OdeModel {
   view3d?: [string, string, string];
   /** The saved parameter-scan experiment for this model. */
   experiment?: ScanConfig;
+  /** Imported measurements to compare and fit against. */
+  data?: ModelData;
   /** Free-form lab notes kept with the model. */
   notes?: string;
 }
@@ -92,6 +113,8 @@ export interface SimStats {
   rejected: number;
   /** Right-hand-side evaluations. */
   evals: number;
+  /** Discrete events that fired. */
+  events: number;
   /** Wall-clock time in milliseconds. */
   ms: number;
 }
@@ -101,10 +124,13 @@ export interface SimResult {
   series: Record<string, number[]>;
   error?: string;
   stats?: SimStats;
+  /** Times at which discrete events fired. */
+  eventTimes?: number[];
 }
 
 const MAX_STEPS = 400_000;
 const MAX_SAMPLES = 6000;
+const MAX_EVENTS = 5000;
 
 // Dormand–Prince 5(4) coefficients.
 const DP_C = [0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1, 1];
@@ -124,7 +150,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
   const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const method: SolverMethod = model.method ?? 'rk4';
   const names = model.states.map((s) => s.name);
-  const stats: SimStats = { method, steps: 0, rejected: 0, evals: 0, ms: 0 };
+  const stats: SimStats = { method, steps: 0, rejected: 0, evals: 0, events: 0, ms: 0 };
   const finish = (r: SimResult): SimResult => {
     stats.ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started;
     return { ...r, stats };
@@ -154,6 +180,7 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
   let derivs: Fast[];
   let derived: Fast[];
   let stop: Fast | undefined;
+  let events: { when: Fast; set: { index: number; value: Fast }[] }[] = [];
   const y: number[] = [];
   try {
     if (!(model.tEnd > 0)) throw new Error('Duration must be positive');
@@ -183,6 +210,18 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     derivs = model.states.map((s) => prepare(s.deriv));
     derived = model.derived.map((d) => prepare(d.expr));
     stop = model.stopWhen ? prepare(model.stopWhen) : undefined;
+    events = (model.events ?? []).filter((e) => e.when.trim()).map((e, k) => {
+      check(e.when, known);
+      const set = e.then.split(/[;\n]/).map((a) => a.trim()).filter(Boolean).map((a) => {
+        const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.+)$/.exec(a);
+        if (!m) throw new Error(`Event ${k + 1}: "${a}" is not an assignment (write e.g. vy = -e * vy)`);
+        const index = names.indexOf(m[1]);
+        if (index < 0) throw new Error(`Event ${k + 1}: "${m[1]}" is not a state variable, so it cannot be reset`);
+        check(m[2], known);
+        return { index, value: prepare(m[2]) };
+      });
+      return { when: prepare(e.when), set };
+    });
   } catch (err) {
     return finish({ t: [], series: {}, error: err instanceof Error ? err.message : String(err) });
   }
@@ -233,27 +272,89 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     f(t0 + h, tmp, rd);
     for (let i = 0; i < n; i++) out[i] = y0[i] + (h / 6) * (ra[i] + 2 * rb[i] + 2 * rc[i] + rd[i]);
   };
+  const trial = new Array<number>(n);
   /**
-   * The stop condition became true somewhere in the step from (t0, yPrev) of size h.
-   * Bisect on the step fraction to land on the moment it first holds, leaving that
-   * state in `y`; returns the event time.
+   * `cond` turned true somewhere in the step of size h from (t0, yPrev). Bisect on the
+   * step fraction; returns the bracket [last false, first true] as offsets from t0.
    */
-  const locateStop = (t0: number, h: number): number => {
-    if (!stop) return t0 + h;
-    const trial = new Array<number>(n);
+  const bracket = (t0: number, h: number, cond: Fast): [number, number] => {
     let lo = 0, hi = h;
-    for (let it = 0; it < 50 && hi - lo > 1e-13 * Math.max(1, Math.abs(t0)); it++) {
+    for (let it = 0; it < 60 && hi - lo > 1e-13 * Math.max(1, Math.abs(t0), h); it++) {
       const mid = (lo + hi) / 2;
       rk4Step(t0, yPrev, mid, trial);
       load(t0 + mid, trial);
-      if (stop(vals)) hi = mid;
+      if (cond(vals)) hi = mid;
       else lo = mid;
     }
+    return [lo, hi];
+  };
+  /** Land on the first moment the stop condition holds, leaving that state in `y`. */
+  const locateStop = (t0: number, h: number): number => {
+    if (!stop) return t0 + h;
+    const hi = bracket(t0, h, stop)[1];
     rk4Step(t0, yPrev, hi, y);
     return t0 + hi;
   };
+
+  const eventTimes: number[] = [];
+  const armed = events.map(() => true);
+  let lastFired = -1;
+  let lastTime = -Infinity;
+  const readEvents = (t: number) => {
+    load(t, y);
+    events.forEach((e, k) => { armed[k] = !e.when(vals); });
+  };
+  /**
+   * After a step from (t0, yPrev) to (t0 + h, y): if an event's condition has just turned
+   * true, rewind to the instant before it, apply its resets, and return that time so the
+   * integrator restarts there. Returns t0 + h when nothing fired.
+   */
+  const handleEvents = (t0: number, h: number): number => {
+    const scale = Math.max(1, Math.abs(t0), h);
+    load(t0 + h, y);
+    let first = -1;
+    let firstLo = h;
+    for (let k = 0; k < events.length; k++) {
+      if (!armed[k] || !events[k].when(vals)) continue;
+      const [lo] = bracket(t0, h, events[k].when);
+      load(t0 + h, y);
+      // Straight after firing, the same condition turning true at once is the same crossing
+      // carrying on (the reset did not clear it), not a new event: wait for it to clear.
+      if (k === lastFired && t0 === lastTime && lo <= 4e-13 * scale) { armed[k] = false; continue; }
+      if (first < 0 || lo < firstLo) { first = k; firstLo = lo; }
+    }
+    if (first < 0) {
+      events.forEach((e, k) => { if (!e.when(vals)) armed[k] = true; });
+      return t0 + h;
+    }
+    const te = t0 + firstLo;
+    // One event re-firing ever sooner (a ball coming to rest by smaller and smaller bounces)
+    // never lets time advance; say so rather than grind on or let the state slip through.
+    if (first === lastFired && te - lastTime < 1e-9 * Math.max(1, model.tEnd)) {
+      rk4Step(t0, yPrev, firstLo, y);
+      record(te);
+      throw new Error(`Events accumulate without limit at t ≈ ${te.toPrecision(5)} (Zeno behaviour) — add a stop condition, or change the event so the system can come to rest`);
+    }
+    if (++stats.events > MAX_EVENTS) throw new Error(`More than ${MAX_EVENTS.toLocaleString()} events fired — shorten the run or check the event conditions`);
+    rk4Step(t0, yPrev, firstLo, y);
+    record(te);
+    // All right-hand sides see the pre-event state.
+    const next = events[first].set.map((a) => a.value(vals));
+    events[first].set.forEach((a, i) => { y[a.index] = next[i]; });
+    if (y.some((v) => !Number.isFinite(v))) throw new Error(`An event reset produced a non-finite value at t ≈ ${te.toPrecision(4)}`);
+    record(te);
+    eventTimes.push(te);
+    lastFired = first;
+    lastTime = te;
+    // Re-arm from the post-reset state: an event whose condition still holds waits until it clears.
+    readEvents(te);
+    return te;
+  };
+  const hasEvents = events.length > 0;
+
   try {
     record(0);
+    if (hasEvents) readEvents(0);
     if (method === 'rk45') {
       const rtol = model.tol && model.tol > 0 ? model.tol : 1e-8;
       const atol = rtol * 1e-3;
@@ -289,6 +390,13 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
         if (err <= 1) {
           for (let i = 0; i < n; i++) { yPrev[i] = y[i]; y[i] = yNew[i]; }
           stats.steps++;
+          const tEvent = hasEvents ? handleEvents(t, h) : t + h;
+          if (tEvent < t + h) {
+            // Restart cautiously from the event: the right-hand side has just jumped.
+            t = tEvent;
+            h = Math.min(h, hMax) * 0.1;
+            continue;
+          }
           if (shouldStop(t + h)) {
             record(locateStop(t, h));
             break;
@@ -385,6 +493,12 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
           if (err > 1) { h *= grow; stats.rejected++; continue; }
           for (let i = 0; i < n; i++) { yPrev[i] = y[i]; y[i] = yNew[i]; }
           stats.steps++;
+          const tEvent = hasEvents ? handleEvents(t, h) : t + h;
+          if (tEvent < t + h) {
+            t = tEvent;
+            h *= 0.1;
+            break;
+          }
           if (shouldStop(t + h)) {
             record(locateStop(t, h));
             stopped = true;
@@ -397,14 +511,20 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
         }
       }
     } else {
-      const h = model.dt;
-      const steps = Math.ceil(model.tEnd / h - 1e-9);
+      const dt = model.dt;
+      const steps = Math.ceil(model.tEnd / dt - 1e-9);
       if (steps > MAX_STEPS) throw new Error(`That is ${steps.toLocaleString()} steps — increase the time step or shorten the run`);
       const k1 = new Array<number>(n), k2 = new Array<number>(n), k3 = new Array<number>(n), k4 = new Array<number>(n);
       // Record a bounded number of samples so charts stay fast.
       const stride = Math.max(1, Math.ceil(steps / MAX_SAMPLES));
-      for (let s = 1; s <= steps; s++) {
-        const t = (s - 1) * h;
+      // Time is base + k·dt so it does not drift; an event moves the base to the event time.
+      let base = 0;
+      let k = 0;
+      for (;;) {
+        const t = base + k * dt;
+        const h = Math.min(dt, model.tEnd - t);
+        if (!(h > model.tEnd * 1e-12)) break;
+        if (stats.steps > MAX_STEPS) throw new Error('Too many steps — increase the time step or shorten the run');
         for (let i = 0; i < n; i++) yPrev[i] = y[i];
         f(t, y, k1);
         if (method === 'euler') {
@@ -419,12 +539,20 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
           for (let i = 0; i < n; i++) y[i] += (h / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
         }
         stats.steps++;
-        if (y.some((v) => !Number.isFinite(v))) return blewUp(s * h);
-        if (shouldStop(s * h)) {
+        if (y.some((v) => !Number.isFinite(v))) return blewUp(t + h);
+        const tEvent = hasEvents ? handleEvents(t, h) : t + h;
+        if (tEvent < t + h) {
+          base = tEvent;
+          k = 0;
+          continue;
+        }
+        if (shouldStop(t + h)) {
           record(locateStop(t, h));
           break;
         }
-        if (s % stride === 0 || s === steps) record(s * h);
+        k++;
+        const last = t + h >= model.tEnd * (1 - 1e-12);
+        if (stats.steps % stride === 0 || last) record(last ? model.tEnd : base + k * dt);
       }
     }
   } catch (err) {
@@ -437,9 +565,9 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     const keep = (arr: number[]) => arr.filter((_, i) => i % stride === 0 || i === arr.length - 1);
     const thinned: Record<string, number[]> = {};
     for (const key of Object.keys(series)) thinned[key] = keep(series[key]);
-    return finish({ t: keep(tOut), series: thinned });
+    return finish({ t: keep(tOut), series: thinned, eventTimes });
   }
-  return finish({ t: tOut, series });
+  return finish({ t: tOut, series, eventTimes });
 }
 
 /** Index of the last recorded sample at or before time `t` (samples need not be evenly spaced). */

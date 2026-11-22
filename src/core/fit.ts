@@ -117,12 +117,20 @@ export function nelderMead(f: (x: number[]) => number, x0: number[], scale: numb
   return { x: simplex[0].x, fx: simplex[0].f, iterations, evals, converged };
 }
 
+/** One measured series to match: an observable of the model against data, optionally with error bars. */
+export interface FitTarget {
+  observable: string;
+  t: number[];
+  y: number[];
+  /** One-standard-deviation measurement errors, one per point. */
+  sigma?: number[];
+}
+
 export interface FitRequest {
   model: OdeModel;
   /** Names of the parameters allowed to vary. */
   params: string[];
-  observable: string;
-  data: Dataset;
+  targets: FitTarget[];
   /** Keep each fitted parameter inside its declared [min, max] range. */
   bounded?: boolean;
   /**
@@ -139,13 +147,14 @@ export interface FitResult {
   errors: Record<string, number>;
   /** Correlation matrix of the fitted parameters, in the order of `values`. */
   correlation: number[][];
-  before: Residuals;
-  after: Residuals;
+  /** Fit quality per target, before and after. */
+  targets: { observable: string; before: Residuals; after: Residuals }[];
+  /** χ² per degree of freedom — only when every target came with error bars. */
+  reducedChi2?: number;
   evals: number;
   converged: boolean;
 }
 
-/** Least-squares fit: adjust the chosen parameters so the observable best matches the data. */
 /** Invert a small symmetric matrix by Gauss–Jordan elimination; null if (numerically) singular. */
 export function invert(a: number[][]): number[][] | null {
   const n = a.length;
@@ -167,21 +176,50 @@ export function invert(a: number[][]): number[][] | null {
   return m.map((row) => row.slice(n));
 }
 
-export function fitModel({ model, params, observable, data, bounded, survey = true }: FitRequest): FitResult {
+export function fitModel({ model, params, targets, bounded, survey = true }: FitRequest): FitResult {
   const chosen = model.params.filter((p) => params.includes(p.name));
   if (!chosen.length) throw new Error('Choose at least one parameter to fit');
-  if (data.t.length < chosen.length + 1) throw new Error('Not enough data points for that many parameters');
+  if (!targets.length) throw new Error('Choose at least one measured series to fit');
+  const points = targets.reduce((s, t) => s + t.t.length, 0);
+  if (points < chosen.length + 1) throw new Error('Not enough data points for that many parameters');
+
+  // Weights: the supplied error bars; otherwise each series is scaled by its own spread
+  // when several are fitted together, so that quantities in different units count equally.
+  const hasSigma = targets.every((t) => !!t.sigma && t.sigma.length === t.t.length && t.sigma.every((v) => v > 0));
+  const spread = (y: number[]) => {
+    const m = y.reduce((a, v) => a + v, 0) / y.length;
+    return Math.sqrt(y.reduce((a, v) => a + (v - m) ** 2, 0) / y.length) || 1;
+  };
+  const weights = targets.map((t) => (hasSigma ? t.sigma!.map((v) => 1 / v) : t.t.map(() => (targets.length > 1 ? 1 / spread(t.y) : 1))));
+
   // The run only needs to cover the measured interval.
-  const tMax = Math.max(...data.t);
+  const tMax = Math.max(...targets.flatMap((t) => t.t));
   const base: OdeModel = { ...model, tEnd: Math.max(tMax * 1.0001, model.dt * 2), stopWhen: undefined };
-  const evaluate = (x: number[]) => residuals(simulate(base, Object.fromEntries(chosen.map((p, i) => [p.name, x[i]]))), observable, data);
+  const evaluate = (x: number[]) => {
+    const run = simulate(base, Object.fromEntries(chosen.map((p, i) => [p.name, x[i]])));
+    return targets.map((t) => residuals(run, t.observable, t));
+  };
+  /** Weighted residual vector across all targets (NaN where the run has no value). */
+  const weighted = (rs: Residuals[]) => rs.flatMap((r, k) => targets[k].t.map((_, i) => (r.residuals[i] ?? NaN) * weights[k][i]));
+  const misfit = (rs: Residuals[]) => {
+    let ss = 0, used = 0;
+    for (const v of weighted(rs)) if (Number.isFinite(v)) { ss += v * v; used++; }
+    return { ss, used };
+  };
+
   const x0 = chosen.map((p) => p.value);
   const before = evaluate(x0);
-  if (!before.used) throw new Error(`The run produced no values of "${observable}" at the measured times`);
+  before.forEach((r, k) => { if (!r.used) throw new Error(`The run produced no values of "${targets[k].observable}" at the measured times`); });
+  const usedBefore = misfit(before).used;
   const scale = chosen.map((p) => (p.value !== 0 ? Math.abs(p.value) * 0.1 : (p.max - p.min) * 0.05 || 0.1));
-  // Penalise runs that fail to cover some of the data so the optimiser stays in the valid region.
   const outside = (x: number[]) => !!bounded && x.some((v, i) => v < chosen[i].min || v > chosen[i].max);
-  const cost = (x: number[]) => { if (outside(x)) return Infinity; const r = evaluate(x); return r.used < before.used ? Infinity : r.rms; };
+  // Penalise runs that fail to cover some of the data so the optimiser stays in the valid region.
+  const cost = (x: number[]) => {
+    if (outside(x)) return Infinity;
+    const m = misfit(evaluate(x));
+    return m.used < usedBefore ? Infinity : Math.sqrt(m.ss / m.used);
+  };
+
   // Stage 1 — survey: a grid over the declared ranges (one or two parameters), or
   // line scans along each axis in turn (more), to choose the basin to refine in.
   let start = x0;
@@ -192,8 +230,7 @@ export function fitModel({ model, params, observable, data, bounded, survey = tr
     const c = cost(x);
     if (c < startCost) { startCost = c; start = x; }
   };
-  const ranged = chosen.every((c) => c.max > c.min);
-  if (survey && ranged) {
+  if (survey && chosen.every((c) => c.max > c.min)) {
     const grid = (c: (typeof chosen)[number], n: number) => Array.from({ length: n }, (_, i) => c.min + ((c.max - c.min) * (i + 0.5)) / n);
     if (chosen.length === 1) {
       for (const a of grid(chosen[0], 60)) tryPoint([a]);
@@ -214,22 +251,25 @@ export function fitModel({ model, params, observable, data, bounded, survey = tr
   if (again.fx <= best.fx) best = again;
   const after = evaluate(best.x);
 
-  // Uncertainties from the linearised problem: cov = s² (JᵀJ)⁻¹ with J the residual Jacobian.
+  // Uncertainties from the linearised problem. With error bars the covariance is (JᵀJ)⁻¹ of the
+  // weighted residuals; without, it is scaled by the residual variance s².
   const p = chosen.length;
-  const mask = after.residuals.map(Number.isFinite);
+  const w0 = weighted(after);
+  const mask = w0.map(Number.isFinite);
   const N = mask.filter(Boolean).length;
+  const ss = w0.reduce((a, v) => (Number.isFinite(v) ? a + v * v : a), 0);
   const errors: Record<string, number> = Object.fromEntries(chosen.map((c) => [c.name, NaN]));
   let correlation: number[][] = chosen.map((_, i) => chosen.map((__, j) => (i === j ? 1 : NaN)));
   if (N > p) {
     const Jc = chosen.map((_, j) => {
       const step = 1e-4 * Math.max(Math.abs(best.x[j]), scale[j] * 0.1, 1e-12);
-      const up = evaluate(best.x.map((v, k) => (k === j ? v + step : v))).residuals;
-      const dn = evaluate(best.x.map((v, k) => (k === j ? v - step : v))).residuals;
-      return after.residuals.map((_, i) => (mask[i] && Number.isFinite(up[i]) && Number.isFinite(dn[i]) ? (up[i] - dn[i]) / (2 * step) : 0));
+      const up = weighted(evaluate(best.x.map((v, k) => (k === j ? v + step : v))));
+      const dn = weighted(evaluate(best.x.map((v, k) => (k === j ? v - step : v))));
+      return w0.map((_, i) => (mask[i] && Number.isFinite(up[i]) && Number.isFinite(dn[i]) ? (up[i] - dn[i]) / (2 * step) : 0));
     });
     const JTJ = chosen.map((_, i) => chosen.map((__, j) => Jc[i].reduce((sum, v, k) => sum + v * Jc[j][k], 0)));
     const inv = invert(JTJ);
-    const s2 = (after.rms * after.rms * N) / (N - p);
+    const s2 = hasSigma ? 1 : ss / (N - p);
     if (inv && inv.every((row, i) => row[i] > 0)) {
       chosen.forEach((c, i) => { errors[c.name] = Math.sqrt(s2 * inv[i][i]); });
       correlation = inv.map((row, i) => row.map((v, j) => v / Math.sqrt(inv[i][i] * inv[j][j])));
@@ -240,8 +280,8 @@ export function fitModel({ model, params, observable, data, bounded, survey = tr
     values: Object.fromEntries(chosen.map((c, i) => [c.name, best.x[i]])),
     errors,
     correlation,
-    before,
-    after,
+    targets: targets.map((t, k) => ({ observable: t.observable, before: before[k], after: after[k] })),
+    reducedChi2: hasSigma && N > p ? ss / (N - p) : undefined,
     evals: evals + 2 * p + 1,
     converged: best.converged,
   };

@@ -18,12 +18,15 @@ view on the left and every edit re-runs immediately.
   derivative expressions, named parameters with ranges and units, and
   observables (energies, invariants, anything computed from the state). The
   equations are typeset exactly as the solver will integrate them.
+- **Events** — discrete events fire at the instant a condition turns true and
+  reset state variables: bounces, kicks, switching. Several resets in one event
+  are applied simultaneously from the pre-event state.
 - **Choose the solver** — adaptive Dormand–Prince RK45, a Rosenbrock 2(3)
   method for stiff systems, fixed-step RK4, or Euler; plus a duration and an
   optional stop condition (`y < 0`), whose moment is located inside the step
   rather than rounded to the next one. Each run reports steps, rejected steps,
   right-hand-side evaluations and wall time.
-- **Run** — animated picture or rotatable 3D trajectory, phase portrait, time
+- **Run** — animated picture or rotatable 3D trajectory (hover to read values), phase portrait, time
   series, and a measurement table (final, min, max, time average, period for
   every quantity).
 - **Compare** — hold a run as a dashed reference, change the model, and see
@@ -37,21 +40,27 @@ view on the left and every edit re-runs immediately.
   sets the parameters to the peak. Runs execute in parallel background threads, so the
   window stays responsive and a scan can be cancelled.
 - **Fit to data** — import measurements (CSV, TSV or whitespace-separated),
-  overlay them on the model, choose which parameters are free, and fit by
-  least squares. Each parameter's range is surveyed before the local
-  refinement, so oscillating data do not trap the fit in a wrong minimum. You
-  get fitted values with one-sigma uncertainties, their correlations, a
-  warning when the data cannot separate two parameters, RMS residual and R²
-  before and after, a residual plot, and a button to apply the result.
+  pair each measured column with an observable, optionally with a column of
+  error bars, and fit the parameters you choose by weighted least squares.
+  Several series can be fitted together (position and velocity, say), which is
+  often what separates otherwise-correlated parameters. Each parameter's range
+  is surveyed before the local refinement, so oscillating data do not trap the
+  fit in a wrong minimum. You get fitted values with one-sigma uncertainties,
+  their correlations, χ² per degree of freedom when error bars are given, a
+  warning when the data cannot separate two parameters, per-series residuals,
+  and a button to apply the result. The imported data is saved in the
+  simulation file.
 - **Undo / redo** for every edit to a simulation or a flow.
 - **Export** — any run or experiment as CSV at full double precision.
-- **Templates** — projectile with drag, pendulum, driven damped oscillator,
+- **Templates** — projectile with drag, bouncing ball, pendulum, driven damped oscillator,
   Kepler orbit, Lorenz system, charge in E and B fields, Van der Pol
   oscillator, RLC circuit, coupled oscillators. Each is a starting point, not a fixed demo.
 
 Simulations save as `.physsim` (plain JSON).
 
-![Fitting spring constant and damping to measured data](docs/simulation-fit.png)
+![Fitting two series with error bars](docs/simulation-fit.png)
+
+![A bouncing ball: discrete events resetting the state](docs/simulation-events.png)
 
 ![A family of trajectories across a scanned parameter](docs/simulation-trajectories.png)
 
@@ -123,8 +132,26 @@ To have GitHub build all three for you, copy
 `.github/workflows/build-desktop.yml`. It then runs from the Actions tab (or
 when you push a `v*` tag) and attaches the installers as artifacts.
 
-Builds are not code-signed, so macOS and Windows will warn on first launch
-until signing certificates are configured.
+### Signing the installers
+
+Builds are unsigned by default, so macOS and Windows warn on first launch.
+Signing needs certificates that only the publisher can obtain; once you have
+them, no code changes are required — `electron-builder` reads them from the
+environment (locally, or as repository secrets for the workflow above):
+
+| Variable | What it is |
+| --- | --- |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | macOS "Developer ID Application" certificate exported as a `.p12` (file path or base64), and its password |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Apple account details used to notarise the macOS build |
+| `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` | Windows code-signing certificate (`.pfx`) and its password |
+
+This path has not been exercised here, since it cannot be without real
+certificates.
+
+**Automatic updates are deliberately not included.** The app is offline by
+design and makes no network requests; an updater would change that, and it
+also requires signed builds and somewhere to host releases. It is a product
+decision rather than a missing feature.
 
 Keyboard shortcuts: `Ctrl/Cmd+N` new simulation, `Shift+N` new equation flow,
 `O` open, `S` save, `Shift+S` save as, and `Ctrl/Cmd+1/2/3` to switch between
@@ -184,23 +211,22 @@ chose in a dialog or opened from the OS.
 Stack: Electron, React 19, TypeScript, Vite, React Flow (`@xyflow/react`), three.js,
 mathjs, KaTeX, zustand, Vitest.
 
-## Known limits
+## Scope
 
-- Systems are explicit first-order ODEs (`dy/dt = f(t, y)`). There are no
-  PDEs, no stochastic terms, and one stop condition rather than general events.
+What the tool is built for, and where it stops:
+
+- Systems are first-order ODEs (`dy/dt = f(t, y)`) with optional discrete
+  events. Partial differential equations and stochastic terms are outside its
+  scope.
+- Events that accumulate without limit (a ball coming to rest through ever
+  smaller bounces) stop the run with a message; there is no automatic
+  "at rest" state.
 - The stiff solver uses a finite-difference Jacobian and dense linear algebra,
   which suits small systems (tens of variables), not large ones.
-- Fitting compares one measured column with one observable and assumes equal,
-  independent errors on every point. Imported data lives for the session and
-  is not stored in the `.physsim` file.
+- Fit uncertainties come from a local linearisation and assume independent
+  errors.
 - Simulation equations are plain numbers: unit labels there are annotations and
   are not checked. Dimensional checking lives in Equation Flows; values sent
   from a flow arrive in SI units.
-- Installers are unsigned (see above).
-
-## Ideas for next steps
-
-- Fit several observables at once, with per-point error bars.
-- Multiple events with state resets (bounces, switching).
-- Save imported data alongside the simulation.
-- Code signing and auto-update for the installers (needs certificates).
+- Installers are unsigned until certificates are supplied (see *Signing the
+  installers*).

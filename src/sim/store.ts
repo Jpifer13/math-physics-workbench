@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import type { Column } from '../core/fit';
 import type { OdeModel, SimResult } from '../core/ode';
 import { MODELS } from './models';
 
@@ -62,14 +61,6 @@ function restore(): OdeModel {
   return clone(MODELS[0]);
 }
 
-/** Measured data imported for comparison with the model (kept for the session, not saved in the document). */
-export interface ImportedData {
-  name: string;
-  columns: Column[];
-  timeCol: number;
-  valueCol: number;
-}
-
 export interface Reference {
   run: SimResult;
   label: string;
@@ -82,7 +73,6 @@ interface SimState {
   notice: string;
   /** A held run that later runs are compared against. */
   reference: Reference | null;
-  data: ImportedData | null;
   /** Bumped when a whole model is loaded so views can reset. */
   docVersion: number;
   patch: (p: Partial<OdeModel>) => void;
@@ -96,7 +86,6 @@ export const useSim = create<SimState>((set, get) => ({
   dirty: false,
   notice: '',
   reference: null,
-  data: null,
   docVersion: 0,
   patch: (p) => set({ model: { ...get().model, ...p } }),
   load: (m) => set({ model: normalizeModel(clone(m)), reference: null, docVersion: get().docVersion + 1 }),

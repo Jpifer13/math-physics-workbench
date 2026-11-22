@@ -446,3 +446,8 @@ ul.howto { padding-left: 18px; }
 .btn.undo { width: 26px; padding: 0; font-size: 14px; }
 .sent-note { background: #f1faf1; border: 1px solid #bfe3bf; border-radius: 4px; padding: 6px 10px; margin: 6px 0; font-size: 12px; line-height: 1.45; }
 .eq-actions { flex-wrap: wrap; }
+.table.pairs { margin: 10px 0 8px; }
+.table.pairs select { width: 100%; max-width: 240px; }
+.fit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 20px; }
+@media (max-width: 1250px) { .fit-grid { grid-template-columns: minmax(0, 1fr); } }
+.plot-tip-strong { font-weight: 600; }

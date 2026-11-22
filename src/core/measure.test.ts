@@ -115,3 +115,55 @@ describe('stiff solver and events', () => {
     }
   });
 });
+
+describe('discrete events', () => {
+  const ball: OdeModel = {
+    id: 'ball', name: 'ball', summary: '',
+    states: [{ name: 'y', init: 'h0', deriv: 'vy' }, { name: 'vy', init: '0', deriv: '-g' }],
+    params: [{ name: 'g', value: 9.81, min: 1, max: 20 }, { name: 'h0', value: 1, min: 0, max: 5 }, { name: 'e', value: 1, min: 0, max: 1 }],
+    derived: [{ name: 'E', expr: '0.5 * vy^2 + g * y' }],
+    tEnd: 5, dt: 0.01, timeSeries: ['y'], phase: ['y', 'vy'],
+    events: [{ when: 'y < 0', then: 'vy = -e * vy' }],
+  };
+  const fallTime = Math.sqrt(2 / 9.81);
+
+  it('bounces elastically: energy conserved, bounce times exact', () => {
+    for (const method of ['rk4', 'rk45', 'ros23'] as const) {
+      const r = simulate({ ...ball, method, tol: 1e-9 });
+      expect(r.error, method).toBeUndefined();
+      expect(r.eventTimes!.length, method).toBe(Math.floor((5 + fallTime) / (2 * fallTime)));
+      r.eventTimes!.forEach((t, i) => expect(t, `${method} bounce ${i}`).toBeCloseTo(fallTime * (2 * i + 1), 5));
+      expect(Math.min(...r.series.y), method).toBeGreaterThan(-1e-9);
+      expect(Math.max(...r.series.E) - Math.min(...r.series.E), method).toBeLessThan(1e-5);
+      expect(r.t.at(-1)!, method).toBeCloseTo(5, 9);
+    }
+  });
+  it('loses energy by e² per bounce', () => {
+    const r = simulate({ ...ball, params: ball.params.map((p) => (p.name === 'e' ? { ...p, value: 0.8 } : p)), tEnd: 2 });
+    // Just after the first and second bounces.
+    const at = (k: number) => r.series.E[r.t.lastIndexOf(r.eventTimes![k])];
+    expect(at(0) / 9.81).toBeCloseTo(0.64, 5);
+    expect(at(1) / at(0)).toBeCloseTo(0.64, 5);
+  });
+  it('applies simultaneous assignments from the pre-event state, and keeps stop conditions working', () => {
+    const swap = simulate({
+      id: 's', name: 's', summary: '', params: [], derived: [], tEnd: 3, dt: 0.01, timeSeries: ['a'], phase: ['a', 'b'],
+      states: [{ name: 'a', init: '1', deriv: '0' }, { name: 'b', init: '2', deriv: '0' }, { name: 'c', init: '0', deriv: '1' }],
+      events: [{ when: 'c > 1', then: 'a = b; b = a' }],
+      stopWhen: 'c > 2',
+    });
+    expect(swap.error).toBeUndefined();
+    expect([swap.series.a.at(-1), swap.series.b.at(-1)]).toEqual([2, 1]);
+    expect(swap.eventTimes![0]).toBeCloseTo(1, 9);
+    expect(swap.t.at(-1)!).toBeCloseTo(2, 9);
+  });
+  it('reports malformed events and runaway (Zeno) behaviour', () => {
+    expect(simulate({ ...ball, events: [{ when: 'y < 0', then: 'g = 3' }] }).error).toMatch(/not a state variable/);
+    expect(simulate({ ...ball, events: [{ when: 'y < 0', then: 'vy == 2' }] }).error).toMatch(/not an assignment/);
+    // With e = 0.5 the bounces accumulate at t = 3·√(2h/g): the run must stop there, not fall through the floor.
+    const zeno = simulate({ ...ball, params: ball.params.map((p) => (p.name === 'e' ? { ...p, value: 0.5 } : p)), tEnd: 60 });
+    expect(zeno.error).toMatch(/Zeno/);
+    expect(zeno.t.at(-1)!).toBeCloseTo(3 * fallTime, 3);
+    expect(Math.min(...zeno.series.y)).toBeGreaterThan(-1e-6);
+  });
+});

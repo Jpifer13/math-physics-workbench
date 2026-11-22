@@ -171,6 +171,27 @@ export function Definition() {
           <p className="muted help">Quantities computed from the state at every step — energies, invariants, anything you want to chart or measure.</p>
         </Section>
 
+        <Section title="Events" count={model.events?.length ?? 0} defaultOpen={!!model.events?.length}>
+          {(model.events ?? []).map((ev, i) => {
+            const setEvent = (p: Partial<typeof ev>) => patch({ events: model.events!.map((e, j) => (j === i ? { ...e, ...p } : e)) });
+            return (
+              <div className="ed-block" key={i}>
+                <div className="ed-row">
+                  <span className="muted rate">when</span>
+                  <input className="code" value={ev.when} placeholder="y < 0" onChange={(e) => setEvent({ when: e.target.value })} aria-label={`Condition of event ${i + 1}`} spellCheck={false} />
+                  <button className="btn icon" title="Remove event" onClick={() => patch({ events: model.events!.filter((_, j) => j !== i) })}>×</button>
+                </div>
+                <div className="ed-row">
+                  <span className="muted rate">then set</span>
+                  <input className="code" value={ev.then} placeholder="vy = -e * vy" onChange={(e) => setEvent({ then: e.target.value })} aria-label={`Resets of event ${i + 1}`} spellCheck={false} />
+                </div>
+              </div>
+            );
+          })}
+          <button className="btn small" onClick={() => patch({ events: [...(model.events ?? []), { when: '', then: '' }] })}>+ Event</button>
+          <p className="muted help">An event fires at the instant its condition turns true (located inside the step) and resets state variables — bounces, kicks, switching. Separate several resets with <code>;</code>; every right-hand side uses the values just before the event.</p>
+        </Section>
+
         <Section title="Solver">
           <div className="ed-row">
             <span className="muted">method</span>

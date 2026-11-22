@@ -136,7 +136,7 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
       <div className="runbar">
         {s && (
           <span className="solver-stats" title="Integration statistics for this run">
-            {METHOD_NAMES[s.method]} · {s.steps.toLocaleString()} steps{s.rejected ? ` (${s.rejected.toLocaleString()} rejected)` : ''} · {s.evals.toLocaleString()} evaluations · {run.t.length.toLocaleString()} samples · {s.ms < 10 ? s.ms.toFixed(1) : Math.round(s.ms)} ms
+            {METHOD_NAMES[s.method]} · {s.steps.toLocaleString()} steps{s.rejected ? ` (${s.rejected.toLocaleString()} rejected)` : ''} · {s.evals.toLocaleString()} evaluations ·{s.events ? ` ${s.events.toLocaleString()} event${s.events > 1 ? 's' : ''} ·` : ''} {run.t.length.toLocaleString()} samples · {s.ms < 10 ? s.ms.toFixed(1) : Math.round(s.ms)} ms
           </span>
         )}
         <span className="spacer" />
