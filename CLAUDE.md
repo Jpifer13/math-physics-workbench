@@ -174,7 +174,9 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 
 Scratchpad and web build, checked 2026-11-22 with scripted WebKit and
 Chromium on macOS (simulated pointer strokes, production build): model loads,
-lines are read and answered, portrait and landscape layouts hold.
+lines are read and answered, portrait and landscape layouts hold. Also read
+correctly in Safari on the iPad Air simulator (iPadOS 27.0) with pre-loaded
+strokes; boot one with `xcrun simctl boot <id>` and `xcrun simctl openurl`.
 
 **Not verified — treat as untested:**
 - The web build on a real iPad or Android tablet: Apple Pencil input, palm

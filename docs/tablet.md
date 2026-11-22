@@ -115,6 +115,11 @@ simulated pointer against the production build: the model loads under the
 build's security policy, lines are read and answered in one to two seconds,
 and the portrait and landscape layouts hold.
 
+Also checked in Safari on the iPad Air 11-inch simulator (iPadOS 27.0), with
+strokes loaded into the page rather than drawn: the model loads and reads them
+correctly. The simulator borrows the Mac's memory and processor, so this says
+nothing about memory limits or speed on a tablet.
+
 **Not checked: a real iPad.** In particular: Apple Pencil pressure and palm
 rejection, whether the model fits in Safari's memory on older iPads (it uses a
 few hundred megabytes while loaded), reading speed on tablet hardware, and
