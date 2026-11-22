@@ -174,7 +174,14 @@ describe('failure diagnostics', () => {
     // x' = x² reaches infinity at t = 1; y is well behaved.
     const r = simulate({ ...base, states: [{ name: 'y', init: '1', deriv: '-y' }, { name: 'x', init: '1', deriv: 'x^2' }] });
     expect(r.error).toMatch(/t ≈ (1\.00|0\.99)/);
-    expect(r.error).toMatch(/x is changing fastest there/);
+    expect(r.error).toMatch(/x is (changing fastest|growing without bound) there/);
+  });
+  it('does not call a runaway value an undefined expression', () => {
+    // v' = v² + 1 is tan(t): it grows without bound at t = π/2, but nothing in it is undefined.
+    const r = simulate({ ...base, states: [{ name: 'v', init: '0', deriv: 'v^2 + 1' }] });
+    expect(r.error).toMatch(/t ≈ 1\.5/);
+    expect(r.error).not.toMatch(/undefined/);
+    expect(r.error).toMatch(/v is (changing fastest|growing without bound)/);
   });
   it('names the rate that becomes undefined', () => {
     // sqrt of a quantity that goes negative.

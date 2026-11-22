@@ -59,17 +59,12 @@ locate.
 *Evidence: vendor engineering blog ([MathWorks][mw-constraint]) and a conference
 paper ([Modelica debugging][modelica-debug]) — informative, not a survey.*
 
-**Today.** Errors name the time at which a run diverged, the step size
-collapsed, or events piled up. They do not say which equation or variable was
-responsible, and there is no view of how the step size behaved.
-
-**Proposal — failure diagnostics (M).**
-- On failure, show which variable grew fastest and which equation dominated the
-  error estimate at the last accepted step.
-- A step-size-versus-time chart for adaptive methods, which makes stiffness and
-  near-singularities visible.
-- A stiffness hint: when the explicit method is taking far smaller steps than
-  accuracy requires, suggest the stiff solver (and the reverse).
+**Status: done.** A failed run names the variable that ran away or the rate
+that became undefined. The accuracy check includes a step-size-over-time
+chart, and recommends switching solver only when the other method measurably
+reached the same answer in far fewer steps. (An earlier rule of thumb based on
+step count alone was removed after it gave wrong advice on a relaxation
+oscillator.)
 
 ### 4. Unit mistakes inside simulation equations go unnoticed
 
@@ -81,14 +76,15 @@ under-reported. The Mars Climate Orbiter is the standard example.
 *Evidence: peer-reviewed papers ([McKeever et al.][units-libs], [Orchard et
 al.][units-practice]); frequency is explicitly unmeasured.*
 
-**Today.** Equation Flows check dimensions on every wire. Simulations do not:
-units there are labels only. This is the app's most obvious inconsistency.
-
-**Proposal — dimensional checking for simulations (M).** Give parameters and
-state variables real units (the engine already exists in `core/units.ts`),
-check every rate equation as `[state] / [time]`, and flag mismatches on the
-offending equation in the editor. Keep it opt-in per model so quick sketches
-stay quick.
+**Status: done.** Units are parsed as people write them (`m/s²`,
+`J/(mol·K)`, `1/s`). Wherever they are given, every rate, initial value,
+observable, event and stop condition is checked, with a note beside the
+offending equation ("the rate of change of v works out as force (N), but dv/dt
+needs acceleration (m/s²)"). Unlabelled quantities are treated as unknown, so
+the checking is as strict as the model is annotated. Units of unlabelled
+observables are inferred. **Limit:** the check is dimensional only — equations
+still use the numbers as typed, so a parameter entered in a non-SI unit is
+flagged, not converted.
 
 ---
 
@@ -159,18 +155,13 @@ larger than the parameter itself signal a poorly constrained fit.
 ([Cornell notes][cornell-fit], [lmfit group][lmfit-guess], [debugging bad
 fits][nlsq]) — practitioner consensus rather than a survey.*
 
-**Today.** Partly addressed: the fit surveys each parameter's range before
-refining, reports correlations, and warns when parameters cannot be separated.
-But its uncertainties are the linearised kind the sources warn about.
-
-**Proposal — uncertainties that do not rely on linearisation (M).**
-- *Profile scans:* for each fitted parameter, step it across a range while
-  re-fitting the others, plot χ² against it, and read the confidence interval
-  off the curve — which also shows a second minimum if one exists.
-- *Bootstrap:* refit on resampled data for a distribution of each parameter.
-- *Fix or tie parameters* (hold one constant, or set `b = 2·a`).
-- *Residual diagnostics:* flag structure in the residuals (runs test), which
-  means the model is wrong rather than the parameters.
+**Status: mostly done.** *Profile the fit* steps each parameter across a
+range, re-fits the others at every value, and reads the one-sigma interval off
+the resulting curve — asymmetric where the problem is, and flagged if a second
+minimum appears. A runs test on the residuals warns when they are not randomly
+scattered, i.e. when the model, not the parameters, is the problem.
+**Still open:** bootstrap resampling, and tying one parameter to another
+(holding one fixed is already possible by not ticking it).
 
 ---
 
@@ -252,14 +243,13 @@ free of UI code, which makes this mostly packaging.
 
 ## Suggested order for what remains
 
-Done: items 1, 2, 5 and 6; item 9 mostly.
+Done: items 1 to 6; items 8 and 9 mostly.
 
-1. Item 4 — unit checking in simulations; closes the gap between the two
-   workspaces.
-2. Items 3 and 8 — make failures and fits explain themselves.
-3. Item 7 — global sensitivity and uncertainty propagation.
-4. The rest of item 9 — images of heat maps and 3D views, figure sizing.
-5. Items 10, 11, 12 as the user base and model sizes grow.
+1. Item 7 — global sensitivity and uncertainty propagation. The one remaining
+   place where the app still does what the research criticises.
+2. The rest of items 8 and 9 — bootstrap and tied parameters; images of heat
+   maps and 3D views, figure sizing.
+3. Items 10, 11, 12 as the user base and model sizes grow.
 
 ## Sources
 

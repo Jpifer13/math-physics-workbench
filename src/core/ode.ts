@@ -276,33 +276,38 @@ export function simulate(model: OdeModel, paramValues?: Record<string, number>):
     const state = y.every(Number.isFinite) ? y.slice() : yPrev.slice();
     if (!state.every(Number.isFinite)) return '';
     const rates = new Array<number>(n);
+    /** Index of a rate that is NaN at a finite state — an undefined expression, as opposed to a runaway value. */
     const undefinedRate = (at: number[]): number => {
+      if (!at.every(Number.isFinite)) return -1;
       load(t, at);
       for (let i = 0; i < n; i++) rates[i] = derivs[i](vals);
-      return rates.findIndex((r) => !Number.isFinite(r));
+      return rates.findIndex((r) => Number.isNaN(r));
     };
     try {
       let broken = undefinedRate(state);
       if (broken < 0) {
         // Defined here; look one step ahead, where the failed step was heading.
-        const ahead = state.map((v, i) => v + h * rates[i]);
         const here = rates.slice();
-        broken = undefinedRate(ahead);
+        broken = undefinedRate(state.map((v, i) => v + h * here[i]));
         for (let i = 0; i < n; i++) rates[i] = here[i];
       }
       if (broken >= 0) return ` The rate of change of ${names[broken]} becomes undefined there (a division by zero, or a root or logarithm of a negative number).`;
     } catch {
       return '';
     }
+    const runaway = rates.findIndex((r) => !Number.isFinite(r));
+    if (runaway >= 0) return ` ${names[runaway]} is growing without bound there.`;
     let worst = 0, k = -1;
     for (let i = 0; i < n; i++) {
       const rel = Math.abs(rates[i]) / (Math.abs(state[i]) + 1e-12);
       if (rel > worst) { worst = rel; k = i; }
     }
     // Only worth naming if it changes by many times its own size over the run.
-    return k >= 0 && worst * model.tEnd > 1e3
-      ? ` ${names[k]} is changing fastest there: about ${worst.toPrecision(2)} times its own size per unit time.`
-      : '';
+    if (k < 0 || worst * model.tEnd <= 1e3) return '';
+    // Past a point the exact figure is meaningless: the value has simply run away.
+    return worst > 1e6
+      ? ` ${names[k]} is growing without bound there.`
+      : ` ${names[k]} is changing fastest there: about ${worst.toPrecision(2)} times its own size per unit time.`;
   };
   const blewUp = (t: number, h = model.tEnd / 400): SimResult =>
     finish({ t: tOut, series, error: `The solution diverged at t ≈ ${t.toPrecision(3)} — try a smaller step or tolerance.${culprit(t, h)}` });

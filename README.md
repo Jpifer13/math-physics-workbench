@@ -22,6 +22,10 @@ view on the left and every edit re-runs immediately.
   derivative expressions, named parameters with ranges and units, and
   observables (energies, invariants, anything computed from the state). The
   equations are typeset exactly as the solver will integrate them.
+- **Units are checked** — give parameters and variables units (`m/s²`, `N/m`,
+  `J/(mol·K)`) and every equation is checked for dimensional consistency, with
+  a note beside any that does not add up. Unlabelled quantities are simply not
+  checked.
 - **Events** — discrete events fire at the instant a condition turns true and
   reset state variables: bounces, kicks, switching. Several resets in one event
   are applied simultaneously from the pre-event state.
@@ -35,7 +39,8 @@ view on the left and every edit re-runs immediately.
   every quantity).
 - **Check accuracy** — one click re-runs the model with tighter numerics and
   with a different method and reports how far each quantity moves, so you know
-  whether a result has converged before you rely on it.
+  whether a result has converged before you rely on it. When a run fails, the
+  message names the variable that ran away or the rate that became undefined.
 - **Expectations** — statements a correct run must satisfy (a known period, a
   conserved energy), saved with the model and checked on every run. Click a
   value in the measurement table to create one.
@@ -57,8 +62,10 @@ view on the left and every edit re-runs immediately.
   is surveyed before the local refinement, so oscillating data do not trap the
   fit in a wrong minimum. You get fitted values with one-sigma uncertainties,
   their correlations, χ² per degree of freedom when error bars are given, a
-  warning when the data cannot separate two parameters, per-series residuals,
-  and a button to apply the result. The imported data is saved in the
+  warning when the data cannot separate two parameters, per-series residuals
+  (with a warning when they show systematic structure), and a button to apply
+  the result. *Profile the fit* then gives intervals that do not rely on the
+  linear approximation. The imported data is saved in the
   simulation file.
 - **Undo / redo** for every edit to a simulation or a flow.
 - **Export** — any run or experiment as CSV at full double precision, with a
@@ -81,6 +88,8 @@ Simulations save as `.physsim` (plain JSON).
 ![Exporting a model to Python and comparing the two solutions](docs/other-software.png)
 
 ![Expectations catching a change that breaks known behaviour](docs/simulation-expectations.png)
+
+![A unit error caught beside the equation that caused it](docs/simulation-units.png)
 
 ![A bouncing ball: discrete events resetting the state](docs/simulation-events.png)
 
@@ -206,6 +215,7 @@ src/
     measure.ts    Run measurements, parameter scans, CSV export
     fit.ts        Data import, interpolation, Nelder–Mead, least-squares fitting
     trust.ts      Run comparison, accuracy report, expectations, provenance
+    dimcheck.ts   Unit parsing and dimensional analysis of model equations
     numeric.ts    Derivative, Simpson integration, root and extremum finding
   components/   Plot (SVG line chart), Heatmap, Plot3D (three.js, lazy-loaded),
                 KaTeX wrapper, number field
@@ -252,9 +262,9 @@ What the tool is built for, and where it stops:
   which suits small systems (tens of variables), not large ones.
 - Fit uncertainties come from a local linearisation and assume independent
   errors.
-- Simulation equations are plain numbers: unit labels there are annotations and
-  are not checked. Dimensional checking lives in Equation Flows; values sent
-  from a flow arrive in SI units.
+- Unit checking in simulations is dimensional only: equations use the numbers
+  as typed, so a non-SI unit is flagged rather than converted. Values sent
+  from an equation flow arrive in SI units.
 - Installers are unsigned until certificates are supplied (see *Signing the
   installers*).
 

@@ -53,6 +53,10 @@ export interface AccuracyCheck {
   rows: Difference[];
   /** The comparison run failed. */
   error?: string;
+  /** Integration steps the comparison run needed. */
+  steps?: number;
+  /** Largest relative difference measured the other way round (at this run's sample times). */
+  reverse?: number;
 }
 
 export interface AccuracyReport {
@@ -62,6 +66,11 @@ export interface AccuracyReport {
   crossMethod: AccuracyCheck;
   /** Largest relative change across both checks. */
   worst: number;
+  /**
+   * Set when the other adaptive method reached the same answer in far fewer steps —
+   * measured evidence about stiffness, one way or the other.
+   */
+  faster?: { method: SolverMethod; label: string; ratio: number };
   /** True when the change grows towards the end of the run — the signature of sensitive (chaotic) dynamics. */
   growing: boolean;
 }
@@ -88,16 +97,25 @@ export function accuracyReport(model: OdeModel, run: SimResult): AccuracyReport 
   const check = (m: OdeModel, label: string): AccuracyCheck => {
     const r = simulate(m);
     if (r.error) return { label, rows: [], error: r.error };
-    return { label, rows: compareRuns(run, r).rows };
+    return { label, rows: compareRuns(run, r).rows, steps: r.stats?.steps, reverse: Math.max(0, ...compareRuns(r, run).rows.map((d) => d.worst / d.scale)) };
   };
   const refined = check(refinedModel, refinedLabel);
   const crossMethod = check(crossModel, crossLabel);
   const all = [...refined.rows, ...crossMethod.rows];
   const worstRow = all.reduce<Difference | null>((w, r) => (!w || r.worst / r.scale > w.worst / w.scale ? r : w), null);
   const tLast = run.t[run.t.length - 1] ?? 0;
+  // Only a like-for-like comparison of adaptive methods that agree says anything about efficiency.
+  // A run thinned for display cannot resolve a feature narrower than its sample spacing (the
+  // initial layer of a stiff system), so agreement is judged at whichever sampling is kinder.
+  const crossWorst = Math.min(Math.max(0, ...crossMethod.rows.map((r) => r.worst / r.scale)), crossMethod.reverse ?? Infinity);
+  const mine = run.stats?.steps ?? 0;
+  const faster = adaptive && !crossMethod.error && crossWorst < 1e-3 && crossMethod.steps && mine / crossMethod.steps > 3
+    ? { method: other, label: METHOD_LABEL[other], ratio: mine / crossMethod.steps }
+    : undefined;
   return {
     refined,
     crossMethod,
+    faster,
     worst: worstRow ? worstRow.worst / worstRow.scale : 0,
     // Slow phase drift also peaks late, so only a substantial late disagreement counts.
     growing: !!worstRow && worstRow.worst / worstRow.scale > 1e-2 && worstRow.at > 0.8 * tLast,

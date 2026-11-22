@@ -160,8 +160,6 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
     return [{ name: 'step size', x, y }];
   }, [run]);
   const adaptive = s?.method === 'rk45' || s?.method === 'ros23';
-  // An explicit method forced into far more steps than the output needs is the usual sign of stiffness.
-  const stiffHint = s?.method === 'rk45' && !run.error && s.steps > 6000;
 
   return (
     <>
@@ -194,12 +192,6 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
         <button className="btn small" onClick={() => void exportRun()} disabled={!run.t.length} title="The data, with a header recording the model, parameters and solver that produced it">Export run (CSV)</button>
         <button className="btn small" onClick={() => void exportRecord()} disabled={!run.t.length} title="One file holding the model, the result and its provenance — everything needed to reproduce this run">Run record</button>
       </div>
-      {stiffHint && (
-        <div className="stale-note">
-          RK45 needed {s!.steps.toLocaleString()} steps for this run — many more than the solution's shape requires. If the solution looks smooth, the system is probably stiff.{' '}
-          <button className="link" onClick={() => patch({ method: 'ros23', tol: Math.max(model.tol ?? 1e-8, 1e-7) })}>Switch to the stiff solver</button>
-        </div>
-      )}
       {expectations.length > 0 && (
         <details className={`expect-strip ${failed ? 'fail' : 'pass'}`} open={failed > 0}>
           <summary>{failed ? `${failed} of ${expectations.length} expectations not met` : `All ${expectations.length} expectation${expectations.length > 1 ? 's' : ''} met`}</summary>
@@ -294,6 +286,12 @@ export function RunView({ model, run }: { model: OdeModel; run: SimResult }) {
                     ? <>Not converged, and the disagreement grows towards the end of the run (up to <b>{fmtNum(report.worst * 100, 2)} %</b>). That is the signature of sensitive dynamics: individual trajectories cannot be trusted that far out, though statistics of the motion may still be.</>
                     : <>Not converged: a quantity moves by <b>{fmtNum(report.worst * 100, 2)} %</b> of its size. Tighten the tolerance or reduce the step until this stops changing.</>}
               </div>
+              {report.faster && (
+                <div className="stale-note">
+                  {report.faster.label} reached the same answer in {report.faster.ratio.toFixed(0)}× fewer steps{report.faster.method === 'ros23' ? ' — this system is stiff' : ''}.{' '}
+                  <button className="link" onClick={() => patch({ method: report.faster!.method })}>Switch to {report.faster.label}</button>
+                </div>
+              )}
               <div className="accuracy-grid">
                 {[report.refined, report.crossMethod].map((c, k) => (
                   <div key={k}>

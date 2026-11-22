@@ -3,7 +3,7 @@
  * across a small pool of workers; if workers are unavailable everything falls
  * back to cooperative slices on the main thread.
  */
-import { fitModel, type FitRequest, type FitResult } from '../core/fit';
+import { fitModel, profileFit, type FitRequest, type FitResult, type Profile, type ProfileRequest } from '../core/fit';
 import { measureAt, type MeasureId } from '../core/measure';
 import type { OdeModel } from '../core/ode';
 import type { WorkerRequest } from './worker';
@@ -84,6 +84,27 @@ export function runFit(request: FitRequest): Task<FitResult> {
       };
       worker.onerror = () => { worker?.terminate(); onMain(); };
       worker.postMessage({ type: 'fit', request: { ...request, model: lean(request.model) } } satisfies WorkerRequest);
+    } catch {
+      onMain();
+    }
+  });
+  return { promise, cancel: () => worker?.terminate() };
+}
+
+/** Profile each fitted parameter in the background. */
+export function runProfile(request: ProfileRequest): Task<Profile[]> {
+  let worker: Worker | null = null;
+  const promise = new Promise<Profile[]>((resolve, reject) => {
+    const onMain = () => setTimeout(() => { try { resolve(profileFit(request)); } catch (err) { reject(err); } });
+    try {
+      worker = spawn();
+      worker.onmessage = (e) => {
+        worker?.terminate();
+        if (e.data.type === 'profile') resolve(e.data.result);
+        else reject(new Error(e.data.message ?? 'The profile failed'));
+      };
+      worker.onerror = () => { worker?.terminate(); onMain(); };
+      worker.postMessage({ type: 'profile', request: { ...request, model: lean(request.model) } } satisfies WorkerRequest);
     } catch {
       onMain();
     }

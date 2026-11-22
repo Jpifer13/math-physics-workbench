@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { interpolate, parseTable, residuals, type FitResult, type FitTarget } from '../core/fit';
+import { interpolate, parseTable, residuals, runsTest, type FitResult, type FitTarget, type Profile } from '../core/fit';
 import { simulate, type ModelData, type OdeModel, type SimResult } from '../core/ode';
 import { fmtNum } from '../core/units';
 import { importData } from '../documents';
 import { Plot, type Series } from '../components/Plot';
-import { runFit, type Task } from './compute';
+import { runFit, runProfile, type Task } from './compute';
 import { useSim } from './store';
 
 const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
@@ -19,8 +19,25 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
   const [fit, setFit] = useState<FitResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [profiles, setProfiles] = useState<Profile[] | null>(null);
+  const [profiling, setProfiling] = useState(false);
   const task = useRef<Task<FitResult> | null>(null);
-  useEffect(() => () => task.current?.cancel(), []);
+  const profileTask = useRef<Task<Profile[]> | null>(null);
+  useEffect(() => () => { task.current?.cancel(); profileTask.current?.cancel(); }, []);
+  useEffect(() => { setProfiles(null); profileTask.current?.cancel(); setProfiling(false); }, [fit]);
+
+  const startProfile = () => {
+    if (!fit) return;
+    // Profile around the fitted values, whether or not they have been applied yet.
+    const fitted = { ...model, params: model.params.map((p) => (p.name in fit.values ? { ...p, value: fit.values[p.name] } : p)) };
+    setProfiling(true);
+    const t = runProfile({ model: fitted, params: Object.keys(fit.values), targets, bounded, values: fit.values, errors: fit.errors });
+    profileTask.current = t;
+    t.promise.then(
+      (r) => { if (profileTask.current === t) { setProfiles(r); setProfiling(false); } },
+      (err) => { if (profileTask.current === t) { setProfiling(false); setMessage(err instanceof Error ? err.message : String(err)); } },
+    );
+  };
 
   const observables = [...model.states.map((s) => s.name), ...model.derived.map((d) => d.name)];
   const unitOf = (n: string) => model.states.find((s) => s.name === n)?.unit ?? model.derived.find((d) => d.name === n)?.unit ?? '';
@@ -216,6 +233,12 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
                       {fit?.targets[k] && <span className="muted">before: RMS {fmtNum(fit.targets[k].before.rms, 5)}</span>}
                     </div>
                   )}
+                  {res && runsTest(res.residuals) < -3 && (
+                    <div className="stale-note">
+                      The residuals of {obs} are not scattered randomly — they stay on one side for long stretches (runs test z = {runsTest(res.residuals).toFixed(1)}).
+                      The model is missing a systematic feature of these data, so the quoted uncertainties understate the real error.
+                    </div>
+                  )}
                   {res && res.used > 0 && (
                     <details className="data-table">
                       <summary>Residuals of {obs} (model − data)</summary>
@@ -281,6 +304,41 @@ export function FitView({ model, run }: { model: OdeModel; run: SimResult }) {
                   <button className="btn primary" onClick={() => patch({ params: model.params.map((p) => (p.name in fit.values ? { ...p, value: fit.values[p.name] } : p)) })}>Apply fitted values</button>
                 )}
               </div>
+              <div className="profile-head">
+                <span className="field-label">Uncertainties without the linear approximation</span>
+                {profiling ? <button className="btn small" onClick={() => { profileTask.current?.cancel(); setProfiling(false); }}>Cancel</button>
+                  : <button className="btn small" onClick={startProfile}>{profiles ? 'Profile again' : 'Profile the fit'}</button>}
+              </div>
+              {profiling && <progress className="scan-progress" aria-label="Profiling" />}
+              {!profiles && !profiling && <p className="muted help">Steps each parameter across a range, re-fitting the others at every value, and plots how much worse the best possible fit becomes. The interval is read off the curve itself, so it can be asymmetric and it reveals a second minimum if there is one.</p>}
+              {profiles && (
+                <div className="fit-grid">
+                  {profiles.map((pr) => {
+                    const [lo, hi] = pr.interval;
+                    const v = fit.values[pr.param];
+                    const unit = model.params.find((q) => q.name === pr.param)?.unit;
+                    return (
+                      <div key={pr.param}>
+                        <Plot
+                          height={200} hover
+                          series={[{ name: 'rise in misfit', x: pr.x, y: pr.delta, slot: 1 }, { name: '1σ level', x: [pr.x[0], pr.x[pr.x.length - 1]], y: [1, 1], slot: 2, dashed: true }]}
+                          xLabel={`${pr.param}${unit ? ` (${unit})` : ''}`} yLabel={fit.reducedChi2 !== undefined ? 'Δχ²' : 'ΔSS / s²'}
+                          yDomain={[0, Math.min(Math.max(...pr.delta.filter(Number.isFinite), 2), 12)]} exportName={`profile of ${pr.param}`}
+                        />
+                        <div className="fit-stats">
+                          <span><code>{pr.param}</code> = <b>{fmtNum(v, 6)}</b>{' '}
+                            {lo !== null && hi !== null
+                              ? <>−{fmtNum(v - lo, 2)} / +{fmtNum(hi - v, 2)}</>
+                              : <span className="warn">{lo === null && hi === null ? 'not bounded within the scanned range' : lo === null ? `no lower bound within the scan; +${fmtNum(hi! - v, 2)}` : `−${fmtNum(v - lo, 2)}; no upper bound within the scan`}</span>}
+                          </span>
+                          <span className="muted">linear estimate ±{Number.isFinite(fit.errors[pr.param]) ? fmtNum(fit.errors[pr.param], 2) : '—'}</span>
+                        </div>
+                        {pr.secondMinimum && <div className="stale-note">The misfit dips below the 1σ level a second time: there is another value of {pr.param} that fits about as well.</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <p className="muted help">
                 Each parameter's configured range is surveyed first, then the best region is refined by Nelder–Mead simplex.{' '}
                 {fit.reducedChi2 !== undefined

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitModel, interpolate, invert, nelderMead, parseTable } from './fit';
+import { fitModel, interpolate, invert, nelderMead, parseTable, profileFit, residuals, runsTest } from './fit';
 import { simulate, type OdeModel } from './ode';
 
 const model: OdeModel = {
@@ -120,6 +120,46 @@ describe('model fitting', () => {
     expect(Math.abs(both.values.k - 4.3)).toBeLessThan(5 * both.errors.k);
     // Without error bars there is no chi-squared to report.
     expect(fitModel({ model, params: ['k'], targets: [{ observable: 'x', t, y: x }] }).reducedChi2).toBeUndefined();
+  });
+  it('profiles agree with the linear uncertainty when the problem is well behaved', () => {
+    const data = noisy(4.3, 0.22);
+    const request = { model, params: ['k', 'b'], targets: [{ observable: 'x', ...data }] };
+    const fit = fitModel(request);
+    const profiles = profileFit({ ...request, values: fit.values, errors: fit.errors }, 13);
+    expect(profiles.map((p) => p.param)).toEqual(['k', 'b']);
+    for (const p of profiles) {
+      const [lo, hi] = p.interval;
+      expect(lo, p.param).not.toBeNull();
+      expect(hi, p.param).not.toBeNull();
+      // The misfit is lowest at the fitted value and the interval brackets it.
+      expect(Math.min(...p.delta)).toBeLessThan(0.05);
+      expect(lo!).toBeLessThan(fit.values[p.param]);
+      expect(hi!).toBeGreaterThan(fit.values[p.param]);
+      const half = (hi! - lo!) / 2;
+      expect(half / fit.errors[p.param], p.param).toBeGreaterThan(0.6);
+      expect(half / fit.errors[p.param], p.param).toBeLessThan(1.6);
+      expect(p.secondMinimum).toBe(false);
+    }
+  });
+  it('profiles a single parameter without re-fitting anything', () => {
+    const data = noisy(4.3, 0.22);
+    const request = { model: { ...model, params: [model.params[0], { ...model.params[1], value: 0.22 }] }, params: ['k'], targets: [{ observable: 'x', ...data }] };
+    const fit = fitModel(request);
+    const [p] = profileFit({ ...request, values: fit.values, errors: fit.errors }, 11);
+    expect(p.interval[0]!).toBeLessThan(fit.values.k);
+    expect(p.interval[1]!).toBeGreaterThan(fit.values.k);
+  });
+  it('detects structure in residuals that a wrong model leaves behind', () => {
+    // Genuinely random-looking noise (a seeded generator), since the test is about randomness of signs.
+    let seed = 12345;
+    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const truth = simulate(model, { k: 4.3, b: 0.22 });
+    const t = truth.t.filter((_, i) => i % 4 === 0);
+    const y = truth.series.x.filter((_, i) => i % 4 === 0).map((v) => v + 0.02 * (rand() - 0.5));
+    const data = { t, y };
+    expect(Math.abs(runsTest(residuals(truth, 'x', data).residuals))).toBeLessThan(3);
+    expect(runsTest(residuals(simulate(model, { k: 4.3, b: 0.6 }), 'x', data).residuals)).toBeLessThan(-5);
+    expect(runsTest([1, -1, 1])).toBeNaN();
   });
   it('inverts small matrices and detects singular ones', () => {
     expect(invert([[2, 0], [0, 4]])).toEqual([[0.5, 0], [0, 0.25]]);

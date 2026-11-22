@@ -34,6 +34,20 @@ describe('accuracy report', () => {
     expect(rep.worst).toBeGreaterThan(0.01);
     expect(rep.growing).toBe(true);
   });
+  it('recommends the other solver only when it measurably does better', () => {
+    // Strongly stiff: relaxes to cos(t) a hundred thousand times faster than cos(t) varies.
+    const stiff: OdeModel = {
+      id: 'stiff', name: 'stiff', summary: '', derived: [], tEnd: 4, dt: 0.01, method: 'rk45', tol: 1e-6, timeSeries: ['y'], phase: ['y', 'y'],
+      states: [{ name: 'y', init: '0', deriv: '-lambda * (y - cos(t))' }], params: [{ name: 'lambda', value: 1e5, min: 1, max: 1e6 }],
+    };
+    const rep = accuracyReport(stiff, simulate(stiff));
+    expect(rep.faster?.method).toBe('ros23');
+    expect(rep.faster!.ratio).toBeGreaterThan(10);
+    // A smooth oscillator gains nothing from the stiff method, and a relaxation oscillator with sharp jumps is not helped either.
+    expect(accuracyReport(sho, simulate(sho)).faster).toBeUndefined();
+    const vdp = { ...MODELS.find((m) => m.id === 'vdp')!, method: 'rk45' as const, tol: 1e-8, tEnd: 100, params: [{ name: 'mu', value: 20, min: 0, max: 50 }, { name: 'x0', value: 0.5, min: -3, max: 3 }] };
+    expect(accuracyReport(vdp, simulate(vdp)).faster).toBeUndefined();
+  });
   it('compares only where both runs have data', () => {
     const a = simulate(sho);
     const b = simulate({ ...sho, tEnd: 10, derived: [] });

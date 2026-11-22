@@ -176,7 +176,8 @@ export function invert(a: number[][]): number[][] | null {
   return m.map((row) => row.slice(n));
 }
 
-export function fitModel({ model, params, targets, bounded, survey = true }: FitRequest): FitResult {
+/** The pieces of a fitting problem shared by the fit itself and by profile scans. */
+function problemOf({ model, params, targets, bounded }: FitRequest) {
   const chosen = model.params.filter((p) => params.includes(p.name));
   if (!chosen.length) throw new Error('Choose at least one parameter to fit');
   if (!targets.length) throw new Error('Choose at least one measured series to fit');
@@ -195,8 +196,9 @@ export function fitModel({ model, params, targets, bounded, survey = true }: Fit
   // The run only needs to cover the measured interval.
   const tMax = Math.max(...targets.flatMap((t) => t.t));
   const base: OdeModel = { ...model, tEnd: Math.max(tMax * 1.0001, model.dt * 2), stopWhen: undefined };
-  const evaluate = (x: number[]) => {
-    const run = simulate(base, Object.fromEntries(chosen.map((p, i) => [p.name, x[i]])));
+  /** Residuals per target with the chosen parameters set to `x` (others, optionally, to `fixed`). */
+  const evaluate = (x: number[], fixed: Record<string, number> = {}) => {
+    const run = simulate(base, { ...fixed, ...Object.fromEntries(chosen.map((p, i) => [p.name, x[i]])) });
     return targets.map((t) => residuals(run, t.observable, t));
   };
   /** Weighted residual vector across all targets (NaN where the run has no value). */
@@ -206,13 +208,19 @@ export function fitModel({ model, params, targets, bounded, survey = true }: Fit
     for (const v of weighted(rs)) if (Number.isFinite(v)) { ss += v * v; used++; }
     return { ss, used };
   };
+  const outside = (x: number[]) => !!bounded && x.some((v, i) => v < chosen[i].min || v > chosen[i].max);
+  return { chosen, hasSigma, evaluate, weighted, misfit, outside };
+}
+
+export function fitModel(request: FitRequest): FitResult {
+  const { targets, survey = true } = request;
+  const { chosen, hasSigma, evaluate, weighted, misfit, outside } = problemOf(request);
 
   const x0 = chosen.map((p) => p.value);
   const before = evaluate(x0);
   before.forEach((r, k) => { if (!r.used) throw new Error(`The run produced no values of "${targets[k].observable}" at the measured times`); });
   const usedBefore = misfit(before).used;
   const scale = chosen.map((p) => (p.value !== 0 ? Math.abs(p.value) * 0.1 : (p.max - p.min) * 0.05 || 0.1));
-  const outside = (x: number[]) => !!bounded && x.some((v, i) => v < chosen[i].min || v > chosen[i].max);
   // Penalise runs that fail to cover some of the data so the optimiser stays in the valid region.
   const cost = (x: number[]) => {
     if (outside(x)) return Infinity;
@@ -285,4 +293,106 @@ export function fitModel({ model, params, targets, bounded, survey = true }: Fit
     evals: evals + 2 * p + 1,
     converged: best.converged,
   };
+}
+
+// ------------------------------------------------------------ profile scans
+
+export interface ProfileRequest extends FitRequest {
+  /** The fitted values and their linearised uncertainties, from fitModel. */
+  values: Record<string, number>;
+  errors: Record<string, number>;
+}
+
+export interface Profile {
+  param: string;
+  x: number[];
+  /**
+   * Rise in the misfit above its minimum, in units where 1 marks the one-sigma
+   * level: Δχ² with error bars, otherwise ΔSS divided by the residual variance.
+   */
+  delta: number[];
+  /** One-sigma interval read off the curve; null on a side where the curve never reaches 1 within the scan. */
+  interval: [number | null, number | null];
+  /** True when the curve has a second dip below the one-sigma level away from the best fit. */
+  secondMinimum: boolean;
+}
+
+/**
+ * Likelihood profile of each fitted parameter: step it across a range, re-fit
+ * the other parameters at every value, and record how much worse the best
+ * achievable fit becomes. Unlike the linearised uncertainty this follows the
+ * true shape of the misfit, so it shows asymmetric intervals and second minima.
+ */
+export function profileFit(request: ProfileRequest, pointsPerParam = 21): Profile[] {
+  const { chosen, hasSigma, evaluate, misfit, outside } = problemOf(request);
+  const best = chosen.map((c) => request.values[c.name] ?? c.value);
+  const at = misfit(evaluate(best));
+  const p = chosen.length;
+  const unit = hasSigma ? 1 : at.ss / Math.max(1, at.used - p);
+  if (!(unit > 0)) throw new Error('The fit is exact, so there is no misfit to profile');
+
+  return chosen.map((c, j) => {
+    const sigma = request.errors[c.name];
+    const half = Number.isFinite(sigma) && sigma > 0 ? 4 * sigma : Math.abs(best[j]) * 0.25 || (c.max - c.min) * 0.1 || 0.1;
+    const x = Array.from({ length: pointsPerParam }, (_, i) => best[j] - half + (2 * half * i) / (pointsPerParam - 1));
+    const others = chosen.filter((_, k) => k !== j);
+    const delta = x.map((v) => {
+      const fixed = { [c.name]: v };
+      const full = (o: number[]) => chosen.map((cc, k) => (k === j ? v : o[others.indexOf(cc)]));
+      let ss: number;
+      if (!others.length) {
+        // Nothing else to adjust: the profile is just the misfit along this one axis.
+        const m = outside([v]) ? null : misfit(evaluate([v]));
+        ss = !m || m.used < at.used ? Infinity : m.ss;
+      }
+      else {
+        // Re-fit the remaining parameters, starting from their best-fit values.
+        const o0 = others.map((cc) => request.values[cc.name] ?? cc.value);
+        const sc = others.map((cc, k) => {
+          const e = request.errors[cc.name];
+          return Number.isFinite(e) && e > 0 ? e : Math.abs(o0[k]) * 0.05 || 0.05;
+        });
+        // evaluate() varies the chosen list, so wrap it to vary only the others.
+        const problem = problemOf({ ...request, params: others.map((cc) => cc.name) });
+        const cost = (o: number[]) => {
+          if (outside(full(o))) return Infinity;
+          const m = problem.misfit(problem.evaluate(o, fixed));
+          return m.used < at.used ? Infinity : m.ss;
+        };
+        ss = nelderMead(cost, o0, sc, 60 + 40 * others.length, 1e-10).fx;
+      }
+      return Math.max(0, (ss - at.ss) / unit);
+    });
+
+    // Walk outwards from the best fit to where the curve first crosses 1 on each side.
+    const mid = (pointsPerParam - 1) / 2;
+    const cross = (dir: 1 | -1): number | null => {
+      for (let i = mid; i + dir >= 0 && i + dir < x.length; i += dir) {
+        const a = delta[i], b = delta[i + dir];
+        if (b >= 1 && a < 1) return x[i] + ((x[i + dir] - x[i]) * (1 - a)) / (b - a);
+      }
+      return null;
+    };
+    const lo = cross(-1), hi = cross(1);
+    const secondMinimum = delta.some((d, i) => d < 1 && ((lo !== null && x[i] < lo) || (hi !== null && x[i] > hi)));
+    return { param: c.name, x, delta, interval: [lo, hi], secondMinimum };
+  });
+}
+
+/**
+ * Wald–Wolfowitz runs test on the signs of residuals. Returns a z-score: strongly
+ * negative means long stretches of same-signed residuals, i.e. the model misses a
+ * systematic feature of the data. NaN when there is too little to test.
+ */
+export function runsTest(res: number[]): number {
+  const signs = res.filter((r) => Number.isFinite(r) && r !== 0).map((r) => r > 0);
+  const n1 = signs.filter(Boolean).length;
+  const n2 = signs.length - n1;
+  if (n1 < 8 || n2 < 8) return NaN;
+  let runs = 1;
+  for (let i = 1; i < signs.length; i++) if (signs[i] !== signs[i - 1]) runs++;
+  const n = n1 + n2;
+  const mean = (2 * n1 * n2) / n + 1;
+  const variance = (2 * n1 * n2 * (2 * n1 * n2 - n)) / (n * n * (n - 1));
+  return (runs - mean) / Math.sqrt(variance);
 }
