@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('desktop', {
   setDirty: (names) => ipcRenderer.send('doc:dirty', names),
   /** Close the window without asking again (after the user chose Save). */
   closeWindow: () => ipcRenderer.send('app:close'),
-  /** Menu commands: 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math'. */
+  /** Menu commands: 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'compare' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math'. */
   onMenu: subscribe('menu'),
   /** A document opened from the operating system (double-click, "Open with"). */
   onFileOpened: subscribe('file:opened'),

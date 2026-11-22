@@ -204,18 +204,17 @@ resolution. Large diagrams are routinely broken up to stay manageable.
 *Evidence: vendor documentation and user forums ([NI][ni-merge],
 [MathWorks][mw-merge], [NI forum][ni-forum]) — anecdotal but consistent.*
 
-**Today.** Both file formats are text (JSON), so version control already
-works. But the files are not laid out for readable diffs, and a large flow has
-no grouping or auto-layout.
-
-**Proposal — diff-friendly files and structure for larger flows (M).**
-- Write files with stable key order and one item per line, keeping layout
-  (block positions) apart from meaning (blocks and wires), so a diff shows
-  what changed scientifically.
-- A built-in "compare with file…" view listing changed equations, parameters
-  and settings between two versions.
-- Sub-flows (collapse a group of blocks into one reusable block) and
-  auto-layout.
+**Status: mostly done.** Files are written with keys in a fixed order and one
+state, parameter, block or wire per line; a flow's block positions live in a
+separate `layout` section, apart from what the blocks compute. Changing one
+parameter changes one line of the file, and dragging a block changes one line
+of the layout. *Compare with a file* lists the differences between the open
+document and a saved one in the model's terms, marks which of them change the
+numbers, and for a simulation can show the file's run as a dashed reference.
+*Tidy layout* arranges a flow left to right along its wires.
+**Still open:** sub-flows (collapsing a group of blocks into one reusable
+block); comparing two files with each other rather than a file with the open
+document; a three-way merge.
 
 ### 11. Little time to learn a tool
 
@@ -255,9 +254,10 @@ free of UI code, which makes this mostly packaging.
 
 ## Suggested order for what remains
 
-Done: items 1 to 9.
+Done: items 1 to 9; item 10 mostly.
 
-1. Items 10, 11, 12 as the user base and model sizes grow.
+1. Items 11 and 12, and sub-flows from item 10, as the user base and model
+   sizes grow.
 
 ## Sources
 

@@ -2,6 +2,9 @@
  * Document commands shared by the toolbars and the native menu:
  * New, Open, Save, Save As for both document kinds, plus data export.
  */
+import { create } from 'zustand';
+import { diffFlow, diffSim, flowFile, readDocument, simFile, type Change, type FlowFile } from './core/docfile';
+import { simulate, type OdeModel } from './core/ode';
 import { desktop, type DocExt, type OpenedFile } from './desktop';
 import { currentDoc, markSaved, useFlow } from './flow/store';
 import { createHistory, type History } from './history';
@@ -9,7 +12,7 @@ import type { FlowDoc } from './flow/types';
 import { useNav } from './nav';
 import { saveFile } from './saveFile';
 import { APP_VERSION, FILE_FORMAT } from './version';
-import { blankModel, isModel, markSimSaved, useSim } from './sim/store';
+import { blankModel, markSimSaved, normalizeModel, useSim } from './sim/store';
 
 export type DocKind = 'sim' | 'flow';
 
@@ -20,7 +23,7 @@ const KINDS = {
     state: () => useSim.getState(),
     name: () => useSim.getState().model.name,
     hasContent: () => true,
-    serialize: () => JSON.stringify({ format: FILE_FORMAT, app: APP_VERSION, ...useSim.getState().model }, null, 2),
+    serialize: () => simFile(useSim.getState().model, FILE_FORMAT, APP_VERSION),
     mark: markSimSaved,
     fail: (notice: string) => useSim.setState({ notice }),
   },
@@ -30,7 +33,7 @@ const KINDS = {
     state: () => useFlow.getState(),
     name: () => useFlow.getState().name,
     hasContent: () => useFlow.getState().nodes.length > 0,
-    serialize: () => JSON.stringify({ format: FILE_FORMAT, app: APP_VERSION, ...currentDoc() }, null, 2),
+    serialize: () => flowFile(currentDoc(), FILE_FORMAT, APP_VERSION),
     mark: markSaved,
     fail: (notice: string) => useFlow.setState({ notice }),
   },
@@ -76,36 +79,30 @@ export function confirmDiscard(kind: DocKind): boolean {
   return !k.state().dirty || !k.hasContent() || confirm(`This ${k.noun} has unsaved changes. Discard them?`);
 }
 
+/** Why a file could not be read, in the user's terms; '' when it could. */
+function unreadable(file: OpenedFile, r: ReturnType<typeof readDocument>): string {
+  if (r.kind === 'newer') return `“${baseName(file.path)}” was saved by a newer version of Physics Tooling (file format ${r.format}; this version reads up to ${FILE_FORMAT}). Update the app to open it.`;
+  return r.kind === 'unknown' ? `“${baseName(file.path)}” is not a Physics Tooling document.` : '';
+}
+
 /** Load a file's contents into whichever workspace it belongs to. */
 export function loadOpened(file: OpenedFile) {
   const active: DocKind = useNav.getState().tab === 'flow' ? 'flow' : 'sim';
-  let data: unknown;
-  try {
-    data = JSON.parse(file.text);
-  } catch {
-    return KINDS[active].fail(`“${baseName(file.path)}” is not a Physics Tooling document.`);
-  }
-  // Files record the format they were written in, so a newer file is refused clearly instead of half-loading.
-  const format = (data as { format?: unknown })?.format;
-  if (typeof format === 'number' && format > FILE_FORMAT) {
-    return KINDS[active].fail(`“${baseName(file.path)}” was saved by a newer version of Physics Tooling (file format ${format}; this version reads up to ${FILE_FORMAT}). Update the app to open it.`);
-  }
-  // Migrations by format. 1 → 2: simulations gained an optional `uncertainty` analysis; older files load unchanged.
-  if (isModel(data)) {
+  const r = readDocument(file.text, FILE_FORMAT);
+  if (r.kind === 'sim') {
     if (!confirmDiscard('sim')) return;
-    const { format: _f, app: _a, ...model } = data as typeof data & { format?: number; app?: string };
-    useSim.getState().load(model as typeof data);
+    useSim.getState().load(r.model);
     markSimSaved(file.path);
     histories.sim.reset();
     useNav.getState().setTab('sim');
-  } else if (data && Array.isArray((data as FlowDoc).nodes) && Array.isArray((data as FlowDoc).edges)) {
+  } else if (r.kind === 'flow') {
     if (!confirmDiscard('flow')) return;
-    useFlow.getState().load(data as FlowDoc);
+    useFlow.getState().load(r.flow as FlowDoc);
     markSaved(file.path);
     histories.flow.reset();
     useNav.getState().setTab('flow');
   } else {
-    KINDS[active].fail(`“${baseName(file.path)}” is not a Physics Tooling document.`);
+    KINDS[active].fail(unreadable(file, r));
   }
 }
 
@@ -118,25 +115,76 @@ export function newDocument(kind: DocKind) {
   useNav.getState().setTab(kind);
 }
 
-export async function openDocument() {
-  if (desktop) {
-    try {
-      const file = await desktop.openDocument();
-      if (file) loadOpened(file);
-    } catch (err) {
-      KINDS.sim.fail(`Could not open the file: ${message(err)}`);
-    }
-    return;
-  }
+/** Ask for a document file without loading it. Resolves to null if the user cancels. */
+async function pickDocument(): Promise<OpenedFile | null> {
+  if (desktop) return desktop.openDocument();
   // Browser fallback (development only): a file picker.
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.physsim,.physflow,.json,application/json';
-  input.onchange = async () => {
-    const f = input.files?.[0];
-    if (f) loadOpened({ path: f.name, text: await f.text() });
-  };
-  input.click();
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.physsim,.physflow,.json,application/json';
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      resolve(f ? { path: f.name, text: await f.text() } : null);
+    };
+    input.click();
+  });
+}
+
+export async function openDocument() {
+  try {
+    const file = await pickDocument();
+    if (file) loadOpened(file);
+  } catch (err) {
+    KINDS.sim.fail(`Could not open the file: ${message(err)}`);
+  }
+}
+
+// ---------------------------------------------------------------- comparing
+
+export interface Comparison {
+  kind: DocKind;
+  /** Name of the file the open document is compared with. */
+  fileName: string;
+  /** From the file to the open document. */
+  changes: Change[];
+  /** The file's simulation, so its run can be held as a reference. */
+  model?: OdeModel;
+}
+
+/** The comparison on show, if any. */
+export const useCompare = create<{ comparison: Comparison | null; close: () => void }>((set) => ({
+  comparison: null,
+  close: () => set({ comparison: null }),
+}));
+
+/** Pick a file and list what differs between it and the open document of the same kind. */
+export async function compareWithFile() {
+  const active: DocKind = useNav.getState().tab === 'flow' ? 'flow' : 'sim';
+  try {
+    const file = await pickDocument();
+    if (!file) return;
+    const r = readDocument(file.text, FILE_FORMAT);
+    const fileName = baseName(file.path);
+    if (r.kind === 'sim') {
+      const model = normalizeModel(r.model);
+      useNav.getState().setTab('sim');
+      useCompare.setState({ comparison: { kind: 'sim', fileName, changes: diffSim(model, useSim.getState().model), model } });
+    } else if (r.kind === 'flow') {
+      useNav.getState().setTab('flow');
+      useCompare.setState({ comparison: { kind: 'flow', fileName, changes: diffFlow(r.flow, currentDoc() as FlowFile) } });
+    } else {
+      KINDS[active].fail(unreadable(file, r));
+    }
+  } catch (err) {
+    KINDS[active].fail(`Could not open the file: ${message(err)}`);
+  }
+}
+
+/** Show the compared file's run as the dashed reference on every chart of the Run view. */
+export function holdComparedRun() {
+  const c = useCompare.getState().comparison;
+  if (c?.model) useSim.getState().setReference({ run: simulate(c.model), label: `from ${c.fileName}` });
 }
 
 function download(text: string, fileName: string, type: string) {

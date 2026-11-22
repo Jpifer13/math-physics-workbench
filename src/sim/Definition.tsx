@@ -3,7 +3,7 @@ import { symbolToLatex } from '../core/expr';
 import { checkUnits } from '../core/dimcheck';
 import { MEASURES } from '../core/measure';
 import type { Expectation, OdeModel, SolverMethod } from '../core/ode';
-import { confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
+import { compareWithFile, confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
 import { NumberField } from '../components/NumberField';
 import { Tex } from '../components/Tex';
 import { UndoRedo } from '../components/UndoRedo';
@@ -82,6 +82,7 @@ export function Definition() {
           <button className="btn small" onClick={() => void openDocument()}>Open</button>
           <button className="btn small" onClick={() => void saveDocument('sim')}>Save</button>
         </div>
+        <button className="link def-compare" onClick={() => void compareWithFile()} title="List what differs between this simulation and a saved file">Compare with a file…</button>
         <select
           className="template" value="" aria-label="Start from a template"
           onChange={(e) => {

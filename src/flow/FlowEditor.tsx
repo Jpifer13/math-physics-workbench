@@ -3,7 +3,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
+import { compareWithFile, confirmDiscard, historyFor, newDocument, openDocument, saveDocument } from '../documents';
 import { UndoRedo } from '../components/UndoRedo';
 import { evaluate } from '../core/graph';
 import type { PaletteItem } from './catalog';
@@ -98,6 +98,7 @@ function Editor() {
             <button className="btn" onClick={() => void openDocument()}>Open</button>
             <button className="btn" onClick={() => void saveDocument('flow')} title={fileName ? `Save to ${s.filePath}` : 'Save this flow to a file'}>Save</button>
             <button className="btn" onClick={() => void saveDocument('flow', true)}>Save As</button>
+            <button className="btn" onClick={() => void compareWithFile()} title="List what differs between this flow and a saved file">Compare…</button>
             <button className="btn" onClick={() => setShowModel(!showModel)} aria-pressed={showModel}>{showModel ? 'Hide model' : 'Show model'}</button>
           </div>
           {s.notice && <div className="notice" role="alert">{s.notice} <button className="link" onClick={() => useFlow.setState({ notice: '' })}>Dismiss</button></div>}
@@ -122,6 +123,7 @@ function Editor() {
               <Controls showInteractive={false} />
               <MiniMap pannable zoomable nodeColor="#c8c6c4" maskColor="rgba(243,242,241,0.7)" style={{ width: 132, height: 88 }} />
             </ReactFlow>
+            {s.nodes.length > 1 && <button className="btn small canvas-tidy" onClick={s.tidy} title="Arrange the blocks left to right along the wires (undo restores your own arrangement)">Tidy layout</button>}
             {!s.nodes.length && (
               <div className="canvas-empty">
                 <h3>Start building</h3>

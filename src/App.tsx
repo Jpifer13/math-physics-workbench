@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { desktop } from './desktop';
-import { activeKind, dirtyDocuments, loadOpened, newDocument, openDocument, saveAllDirty, saveDocument, undoRedo } from './documents';
+import { CompareDialog } from './components/CompareDialog';
+import { activeKind, compareWithFile, dirtyDocuments, loadOpened, newDocument, openDocument, saveAllDirty, saveDocument, undoRedo } from './documents';
 import { FlowEditor } from './flow/FlowEditor';
 import { useFlow } from './flow/store';
 import { MathTools } from './mathtools/MathTools';
@@ -26,6 +27,7 @@ export function App() {
       if (action === 'new:flow') return newDocument('flow');
       if (action === 'undo' || action === 'redo') return undoRedo(action);
       if (action === 'open') return void openDocument();
+      if (action === 'compare') return void compareWithFile();
       if (action === 'saveAllAndClose') return void saveAllDirty().then((ok) => ok && desktop?.closeWindow());
       // Save acts on the workspace in view; Math Tools has no document, so fall back to the simulation.
       const kind = activeKind() ?? 'sim';
@@ -66,6 +68,7 @@ export function App() {
         {tab === 'flow' && <FlowEditor />}
         {tab === 'math' && <MathTools />}
       </div>
+      <CompareDialog />
     </div>
   );
 }

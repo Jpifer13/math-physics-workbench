@@ -3,7 +3,7 @@ export interface OpenedFile {
   path: string;
   text: string;
 }
-export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math';
+export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'compare' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math';
 export type DocExt = 'physsim' | 'physflow';
 
 export type ExportExt = 'csv' | 'json' | 'svg' | 'png' | 'pdf' | 'py' | 'm' | 'wl' | 'jl';

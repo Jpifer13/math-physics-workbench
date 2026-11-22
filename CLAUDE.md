@@ -14,7 +14,7 @@ and why, and `docs/integrations.md` for the bridges to other software.
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~150 tests
+npm test             # vitest; ~170 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
@@ -45,6 +45,7 @@ src/core/              Engine. No React, no DOM. Everything here is unit-tested.
   ode.ts                 Model types; Euler, RK4, RK45, Rosenbrock23; events
   fastExpr.ts            Compiles expressions to closures (mathjs fallback)
   measure.ts             Measurements, parameter scans, CSV
+  docfile.ts             File reading/writing, document diff, flow auto-layout
   sensitivity.ts         Sampling, uncertainty propagation, Sobol indices
   fit.ts                 Data import, least-squares fit, profiles, runs test
   trust.ts               Run comparison, accuracy report, expectations, provenance
@@ -72,8 +73,10 @@ UI.** New numerical behaviour goes there with tests; views only display it.
 
 - **Document types.** `.physsim` is an `OdeModel` (see `core/ode.ts`);
   `.physflow` is a `FlowDoc`. Both are JSON with a `format` number
-  (`src/version.ts`). If you change either shape, bump `FILE_FORMAT` and add a
-  migration where files are loaded in `documents.ts`.
+  (`src/version.ts`). `core/docfile.ts` writes and reads them. If you change
+  either shape, bump `FILE_FORMAT`, add the migration to `readDocument` there,
+  and give any new top-level key its place in `SIM_KEYS` or `flowFile`. Files
+  are laid out for diffs (fixed key order, one item per line); keep it so.
 - **What re-runs a simulation.** `SimLab.tsx` memoises the run on the fields
   that affect the numbers (states, params, derived, events, solver settings).
   Add a new numeric field to that list, to `basisOf` in `ExperimentView.tsx`
@@ -152,7 +155,8 @@ so do look.
 
 Done and verified: the three workspaces, four solvers with events, experiments
 (1-D and 2-D), uncertainty propagation and Sobol sensitivity, fitting with
-uncertainties, ties, profiles and bootstrap, figure export (SVG, PNG, PDF), accuracy checks, expectations, provenance, unit
+uncertainties, ties, profiles and bootstrap, figure export (SVG, PNG, PDF),
+diff-friendly files and compare-with-file, accuracy checks, expectations, provenance, unit
 checking, undo/redo, code export, running in external tools, the desktop
 shell, and Linux packaging.
 
@@ -179,8 +183,8 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 **Next, in roadmap order** (`docs/roadmap.md` has the evidence and detail):
 1. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
    inputs; feeding fitted uncertainties in as the input spread.
-2. Items 10–12 — diff-friendly files and a compare view, sub-flows, in-app
-   function reference, a command-line mode.
+2. Items 11–12 — in-app function reference and help; a command-line mode.
+3. Rest of item 10 — sub-flows.
 
 Known rough edges: `npm audit` reports a moderate advisory in the installer
 build tool (dev-only; the automatic fix is a breaking downgrade); there is no

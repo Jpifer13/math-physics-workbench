@@ -18,6 +18,10 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   a measurement with 68% and 95% intervals, a band around the observable over
   time, and Sobol first-order and total sensitivity indices with intervals.
   The analysis is saved with the simulation and recorded in CSV exports.
+- **Compare with a file.** File menu, or the link under Save: lists what
+  differs between the open document and a saved one, and which differences
+  change the numbers. A simulation's file can be shown as a reference run.
+- **Tidy layout** arranges an equation flow left to right along its wires.
 - **Figure export for every chart.** Heat maps and bar charts now save as
   SVG, PNG or PDF, and 3D views as PNG or PDF. Line charts gain PDF.
 - **Figure size.** *Size…* on any chart sets the width and height on the page
@@ -36,9 +40,11 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 
 ### Changed
 
-- `.physsim` file format is now 2: simulations can carry an `uncertainty`
-  analysis. Format 1 files open unchanged; version 0.1.0 will refuse files
-  saved from now on rather than silently drop the analysis.
+- File format is now 3. Files are laid out for version control: fixed key
+  order, one item per line, and a flow's block positions in their own
+  `layout` section. Format 2 added an optional `uncertainty` analysis to
+  simulations. Files from formats 1 and 2 open unchanged; version 0.1.0
+  refuses newer files rather than half-load them.
 
 ### Fixed
 

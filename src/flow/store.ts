@@ -1,5 +1,6 @@
 import { addEdge, type Connection, type EdgeChangeset, type NodeChangeset } from '@xyflow/react';
 import { create } from 'zustand';
+import { layoutFlow } from '../core/docfile';
 import { inputPorts, type NodeKind } from '../core/graph';
 import { EXAMPLES } from './examples';
 import { emptyModel, type Cfg, type FEdge, type FlowDoc, type FNode, type ModelCfg } from './types';
@@ -26,6 +27,8 @@ interface FlowState extends FlowDoc {
   setMeta: (patch: Partial<Pick<FlowDoc, 'name' | 'description'>>) => void;
   setModel: (patch: Partial<ModelCfg>) => void;
   load: (doc: FlowDoc) => void;
+  /** Arrange the blocks left to right along the wires. */
+  tidy: () => void;
   clear: () => void;
 }
 
@@ -102,6 +105,14 @@ export const useFlow = create<FlowState>((set, get) => ({
       name: d.name, description: d.description, nodes: d.nodes, edges: d.edges,
       model: { ...emptyModel(), ...d.model }, selectedId: null, docVersion: get().docVersion + 1,
     });
+  },
+  tidy: () => {
+    const at = layoutFlow(get().nodes, get().edges);
+    // Keep the arrangement where the flow already is, rather than jumping to the origin.
+    const x0 = Math.min(...get().nodes.map((n) => n.position.x));
+    const y0 = Math.min(...get().nodes.map((n) => n.position.y));
+    if (!get().nodes.length) return;
+    set({ nodes: get().nodes.map((n) => ({ ...n, position: { x: x0 + at[n.id].x, y: y0 + at[n.id].y } })), docVersion: get().docVersion + 1 });
   },
   clear: () =>
     set({

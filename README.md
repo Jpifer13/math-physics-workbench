@@ -78,6 +78,15 @@ view on the left and every edit re-runs immediately.
   and *Bootstrap* gives them by resampling the data and refitting 200 times.
   The imported data is saved in the simulation file.
 - **Undo / redo** for every edit to a simulation or a flow.
+- **Files made for version control** — documents are JSON with keys in a fixed
+  order and one state, parameter, block or wire per line, so `git diff` shows
+  what changed a line at a time. A flow keeps block positions in a separate
+  `layout` section: dragging a block changes one line there and nothing else.
+- **Compare with a file** — lists what differs between the open document and a
+  saved one in the model's own terms (`dv/dt`, the value of `k`, a wire from
+  Mass to Multiply), and separates the differences that change the numbers
+  from those that do not. For a simulation, one click shows the file's run as
+  a dashed reference beside the open one.
 - **Export** — any run or experiment as CSV at full double precision, with a
   header recording the app version, model, parameters and solver that produced
   it. A *run record* bundles model, result and provenance in one file. Every
