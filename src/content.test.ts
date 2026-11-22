@@ -49,4 +49,12 @@ describe('bundled simulation models', () => {
     expect(drift(run.series.E)).toBeLessThan(1e-6);
     expect(drift(run.series.Lz)).toBeLessThan(1e-6);
   });
+
+  it('keeps speed constant in a pure magnetic field, with the right gyroradius', () => {
+    const run = simulate(MODELS.find((m) => m.id === 'cyclotron')!);
+    expect(Math.abs(run.series.speed.at(-1)! - run.series.speed[0])).toBeLessThan(1e-8);
+    // r = v⊥ / (|q/m| B) = 1, so the circle spans y from −2 to 0.
+    expect(Math.min(...run.series.y)).toBeCloseTo(-2, 3);
+    expect(run.series.z.at(-1)!).toBeCloseTo(0.25 * 30, 6);
+  });
 });

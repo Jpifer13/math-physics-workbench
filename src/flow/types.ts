@@ -14,7 +14,7 @@ export interface ModelCfg {
   max: number;
   logX: boolean;
   logY: boolean;
-  mode: 'curve' | 'map';
+  mode: 'curve' | 'map' | 'surface';
   yId: string;
   yMin: number;
   yMax: number;

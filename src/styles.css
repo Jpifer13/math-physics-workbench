@@ -234,7 +234,7 @@ input[type='checkbox'] { accent-color: var(--accent); margin: 0; }
 /* ------------------------------------------------------------ model panel */
 .model-panel {
   flex: none; display: grid; grid-template-columns: minmax(260px, 34%) minmax(0, 1fr); background: var(--surface);
-  border-top: 1px solid var(--border); height: 318px;
+  border-top: 1px solid var(--border); height: 336px;
 }
 .model-panel.empty { display: grid; place-content: center; height: 90px; grid-template-columns: auto; padding: 0 20px; }
 .model-eq { padding: 10px 14px; border-right: 1px solid var(--border); overflow: auto; }
@@ -375,3 +375,10 @@ input.big { width: 180px; text-align: right; }
   .inspector { display: none; }
   .sim-grid, .analysis { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ------------------------------------------------------------ 3-D charts */
+.plot3d { position: relative; width: 100%; overflow: hidden; }
+.plot3d-host { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); }
+.plot3d-host canvas { display: block; cursor: grab; touch-action: none; }
+.plot3d-host canvas:active { cursor: grabbing; }
+.plot3d-hint { position: absolute; left: 8px; bottom: 4px; font-size: 11px; color: var(--text-muted); pointer-events: none; }

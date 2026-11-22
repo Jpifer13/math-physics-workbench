@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { simulate, type OdeModel } from '../core/ode';
 import { fmtNum } from '../core/units';
 import { Plot } from '../components/Plot';
+import { Plot3D, type Vec3 } from '../components/Plot3D';
 import { NumberField } from '../components/NumberField';
 import { Tex } from '../components/Tex';
 import { MODELS } from './models';
@@ -14,6 +15,8 @@ export function SimLab() {
   const [model, setModel] = useState<OdeModel>(() => clone(MODELS[0]));
   const [shown, setShown] = useState<string[]>(MODELS[0].timeSeries);
   const [phase, setPhase] = useState<[string, string]>(MODELS[0].phase);
+  const [view, setView] = useState<'2d' | '3d'>(MODELS[0].view3d ? '3d' : '2d');
+  const [axes3, setAxes3] = useState<[string, string, string]>(default3d(MODELS[0]));
   const [editing, setEditing] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
@@ -27,6 +30,8 @@ export function SimLab() {
     setModel(clone(m));
     setShown(m.timeSeries);
     setPhase(m.phase);
+    setView(m.view3d ? '3d' : '2d');
+    setAxes3(default3d(m));
     setTNow(0);
     setPlaying(true);
   };
@@ -65,6 +70,19 @@ export function SimLab() {
     () => (px && py ? [{ name: `${py} vs ${px}`, x: run.series[px], y: run.series[py] }] : []),
     [run, px, py],
   );
+
+  // 3-D trajectory: any three recorded variables (or time) as axes.
+  const col3 = (n: string) => (n === 't' ? run.t : run.series[n]);
+  const a3 = axes3.map((n) => (col3(n) ? n : 't')) as [string, string, string];
+  const line3 = useMemo(() => {
+    const [cx, cy, cz] = a3.map(col3);
+    return [{ points: run.t.map((_, i): Vec3 => [cx[i], cy[i], cz[i]]) }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, a3.join('|')]);
+  const isState = (n: string) => model.states.some((st) => st.name === n);
+  const equal3 = a3.every(isState) && new Set(a3.map(unitOf)).size === 1;
+  const label3 = (n: string) => (n === 't' ? 'time (s)' : withUnit(n));
+  const options3 = ['t', ...names];
 
   return (
     <div className="sim-layout">
@@ -120,8 +138,29 @@ export function SimLab() {
 
         <div className="sim-grid">
           <section className="card">
-            <h3>Picture</h3>
-            <Scene model={model} run={run} frame={frame} height={290} />
+            <h3>
+              {view === '2d' ? 'Picture' : 'Path in 3-D'}
+              <span className="card-tools">
+                {view === '3d' && a3.map((n, k) => (
+                  <select key={k} value={n} aria-label={`3-D axis ${'xyz'[k]}`} onChange={(e) => setAxes3(a3.map((v, j) => (j === k ? e.target.value : v)) as [string, string, string])}>
+                    {options3.map((o) => <option key={o}>{o}</option>)}
+                  </select>
+                ))}
+                <span className="seg" role="group" aria-label="View">
+                  <button className={view === '2d' ? 'on' : ''} onClick={() => setView('2d')}>2D</button>
+                  <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}>3D</button>
+                </span>
+              </span>
+            </h3>
+            {view === '2d' ? (
+              <Scene model={model} run={run} frame={frame} height={290} />
+            ) : run.t.length > 1 ? (
+              <Plot3D
+                height={290} lines={line3} progress={frame} equal={equal3}
+                labels={[label3(a3[0]), label3(a3[1]), label3(a3[2])]}
+                markers={[{ p: [col3(a3[0])[frame], col3(a3[1])[frame], col3(a3[2])[frame]], slot: 2 }]}
+              />
+            ) : <p className="muted pad">Nothing to show yet.</p>}
           </section>
           <section className="card">
             <h3>
@@ -168,6 +207,11 @@ export function SimLab() {
       </main>
     </div>
   );
+}
+
+/** Axes of the 3-D view: the model's own choice, else its phase plane stacked along time. */
+function default3d(m: OdeModel): [string, string, string] {
+  return m.view3d ?? [m.phase[0], m.phase[1], 't'];
 }
 
 function ModelEditor({ model, patch }: { model: OdeModel; patch: (p: Partial<OdeModel>) => void }) {

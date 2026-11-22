@@ -40,6 +40,8 @@ export interface OdeModel {
   /** Default variables to chart. */
   timeSeries: string[];
   phase: [string, string];
+  /** Default axes of the 3-D trajectory view (state/derived names or "t"). */
+  view3d?: [string, string, string];
   explore?: string;
 }
 

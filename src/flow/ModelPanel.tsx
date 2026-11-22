@@ -5,6 +5,7 @@ import { symbolToLatex } from '../core/expr';
 import { dimName, fmtNumLatex, formatQuantity, getUnit, quantityText, unitLatex, dimEq } from '../core/units';
 import { Heatmap } from '../components/Heatmap';
 import { Plot } from '../components/Plot';
+import { Plot3D } from '../components/Plot3D';
 import { Tex } from '../components/Tex';
 import { NumberField, ResultsContext } from './PhysNode';
 import { useFlow } from './store';
@@ -45,7 +46,7 @@ export function ModelPanel() {
   const unitDef = getUnit(outUnit);
   const factor = result?.q && unitDef && dimEq(unitDef.d, result.q.d) ? unitDef.f : 1;
 
-  const mode = model.mode === 'map' && yNode ? 'map' : 'curve';
+  const mode = model.mode !== 'curve' && yNode ? model.mode : 'curve';
   const valid = model.max > model.min;
 
   const curve = useMemo(() => {
@@ -55,7 +56,7 @@ export function ModelPanel() {
   }, [graph, output, xNode, model.min, model.max, model.logX, factor, valid, mode]);
 
   const map = useMemo(() => {
-    if (!output || !xNode || !yNode || !valid || mode !== 'map' || !(model.yMax > model.yMin)) return null;
+    if (!output || !xNode || !yNode || !valid || mode === 'curve' || !(model.yMax > model.yMin)) return null;
     const xs = linspace(model.min, model.max, 70);
     const ys = linspace(model.yMin, model.yMax, 50);
     return { xs, ys, z: sweep2D(graph, output.id, xNode.id, xs, yNode.id, ys).map((row) => row.map((v) => v / factor)) };
@@ -119,6 +120,7 @@ export function ModelPanel() {
               <div className="seg" role="group" aria-label="Chart type">
                 <button className={mode === 'curve' ? 'on' : ''} onClick={() => setModel({ mode: 'curve' })}>Curve</button>
                 <button className={mode === 'map' ? 'on' : ''} disabled={!yNode} title={yNode ? 'Vary two inputs at once' : 'Needs a second input'} onClick={() => setModel({ mode: 'map', yId: yNode?.id ?? '' })}>Map</button>
+                <button className={mode === 'surface' ? 'on' : ''} disabled={!yNode} title={yNode ? 'Vary two inputs and see the result as a 3-D surface' : 'Needs a second input'} onClick={() => setModel({ mode: 'surface', yId: yNode?.id ?? '' })}>3D</button>
               </div>
               {mode === 'curve' ? (
                 <span className="checks">
@@ -157,7 +159,7 @@ export function ModelPanel() {
             markers={display ? [{ x: xCfg.value, y: display.value, slot: 2, label: 'current value' }] : []}
           />
         )}
-        {map && xCfg && yCfg && (
+        {map && mode === 'map' && xCfg && yCfg && (
           <Heatmap
             height={222}
             xs={map.xs} ys={map.ys} z={map.z}
@@ -165,6 +167,14 @@ export function ModelPanel() {
             yLabel={axisLabel(yCfg.label, yCfg.unit)}
             zLabel={axisLabel(outName, outUnit)}
             marker={{ x: xCfg.value, y: yCfg.value }}
+          />
+        )}
+        {map && mode === 'surface' && xCfg && yCfg && (
+          <Plot3D
+            height={236}
+            surface={map}
+            labels={[axisLabel(xCfg.label, xCfg.unit), axisLabel(yCfg.label, yCfg.unit), axisLabel(outName, outUnit)]}
+            markers={display ? [{ p: [xCfg.value, yCfg.value, display.value], slot: 2 }] : []}
           />
         )}
       </div>

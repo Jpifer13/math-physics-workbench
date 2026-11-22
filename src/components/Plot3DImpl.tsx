@@ -1,0 +1,347 @@
+import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { makeScale, tickLabel } from './scale';
+import { useWidth } from './useSize';
+
+export type Vec3 = [number, number, number];
+
+export interface Surface3D {
+  xs: number[];
+  ys: number[];
+  /** z[iy][ix] */
+  z: number[][];
+}
+export interface Line3D {
+  points: Vec3[];
+  /** Palette slot 1–8. */
+  slot?: number;
+}
+export interface Marker3D {
+  p: Vec3;
+  slot?: number;
+}
+
+export interface Plot3DProps {
+  surface?: Surface3D;
+  lines?: Line3D[];
+  markers?: Marker3D[];
+  /** With lines: draw the path solid up to this sample and faint beyond it. */
+  progress?: number;
+  labels: [string, string, string];
+  height?: number;
+  /** Same scale on all three axes (for paths through real space). */
+  equal?: boolean;
+  /** Pin the vertical range, e.g. while a surface animates. */
+  zDomain?: [number, number];
+}
+
+// Sequential ramp shared with the 2-D heat map: one hue, light → dark.
+const LO = new THREE.Color('rgb(222,235,250)');
+const HI = new THREE.Color('rgb(9,48,105)');
+
+const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function extent(values: Iterable<number>): [number, number] {
+  let lo = Infinity, hi = -Infinity;
+  for (const v of values) if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (!(lo <= hi)) return [0, 1];
+  if (lo === hi) { const pad = lo === 0 ? 1 : Math.abs(lo) * 0.1; return [lo - pad, hi + pad]; }
+  return [lo, hi];
+}
+
+function textSprite(text: string, color: string, bold: boolean, viewHeight: number): THREE.Sprite {
+  const c = document.createElement('canvas');
+  c.width = 384;
+  c.height = 64;
+  const ctx = c.getContext('2d')!;
+  ctx.font = `${bold ? '600 ' : ''}30px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 192, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false }));
+  // Without size attenuation a sprite is sized as a fraction of the view, so this keeps text at ~12px
+  // whatever the panel height, zoom level or distance from the camera.
+  const h = 17.5 / viewHeight;
+  sprite.scale.set(h * 6, h, 1);
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
+function dispose(obj: THREE.Object3D) {
+  obj.traverse((o) => {
+    const m = o as THREE.Mesh;
+    m.geometry?.dispose();
+    const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+    for (const mat of mats) {
+      (mat as THREE.SpriteMaterial).map?.dispose();
+      mat.dispose();
+    }
+  });
+}
+
+interface Stage {
+  renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  controls: OrbitControls;
+  frame: THREE.Group;
+  content: THREE.Group;
+  markers: THREE.Group;
+  frameKey: string;
+  solid: Line2[];
+  render: () => void;
+}
+
+/**
+ * Interactive 3-D chart (drag to orbit, scroll to zoom). Data axes are x, y
+ * horizontal and z up; everything is scaled into a fixed box so any units fit.
+ */
+export default function Plot3DImpl({ surface, lines, markers, progress, labels, height = 300, equal, zDomain }: Plot3DProps) {
+  const [wrap, width] = useWidth<HTMLDivElement>();
+  const host = useRef<HTMLDivElement>(null);
+  const stage = useRef<Stage | null>(null);
+  const mapRef = useRef<(p: Vec3) => THREE.Vector3>(() => new THREE.Vector3());
+
+  // One-time scene setup.
+  useEffect(() => {
+    const el = host.current!;
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    } catch {
+      el.textContent = '3-D graphics (WebGL) are not available in this browser.';
+      return;
+    }
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    el.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 50);
+    // Short panels need the camera further back so the axis labels stay in frame.
+    camera.position.set(2.7, 1.75, 3.35).multiplyScalar(height < 300 ? 1.3 : 1);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, -0.2, 0);
+    controls.minDistance = 1.8;
+    controls.maxDistance = 10;
+    controls.enablePan = false;
+    controls.update();
+    scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+    sun.position.set(1.5, 4, 2.5);
+    scene.add(sun);
+    const frame = new THREE.Group();
+    const content = new THREE.Group();
+    const markerGroup = new THREE.Group();
+    scene.add(frame, content, markerGroup);
+    const render = () => renderer.render(scene, camera);
+    controls.addEventListener('change', render);
+    stage.current = { renderer, scene, camera, controls, frame, content, markers: markerGroup, frameKey: '', solid: [], render };
+    return () => {
+      controls.dispose();
+      dispose(scene);
+      renderer.dispose();
+      renderer.domElement.remove();
+      stage.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const s = stage.current;
+    if (!s) return;
+    s.renderer.setSize(width, height);
+    s.camera.aspect = width / height;
+    s.camera.updateProjectionMatrix();
+    for (const l of s.solid) (l.material as LineMaterial).resolution.set(width, height);
+    s.content.traverse((o) => {
+      const mat = (o as Line2).material as LineMaterial | undefined;
+      if (mat && (mat as LineMaterial).isLineMaterial) mat.resolution.set(width, height);
+    });
+    s.render();
+  }, [width, height]);
+
+  // Axes, surface and paths.
+  useEffect(() => {
+    const s = stage.current;
+    if (!s) return;
+
+    const pts = (lines ?? []).flatMap((l) => l.points);
+    let dx = extent(surface ? surface.xs : pts.map((p) => p[0]));
+    let dy = extent(surface ? surface.ys : pts.map((p) => p[1]));
+    let dz = zDomain ?? extent(surface ? surface.z.flat() : pts.map((p) => p[2]));
+    let half: Vec3 = [1, 1, 0.62];
+    if (equal) {
+      const span = Math.max(dx[1] - dx[0], dy[1] - dy[0], dz[1] - dz[0]);
+      half = [(dx[1] - dx[0]) / span, (dy[1] - dy[0]) / span, (dz[1] - dz[0]) / span].map((h) => Math.max(h, 0.12)) as Vec3;
+    }
+    const [hx, hy, hz] = half;
+    // Data (x, y, z-up) → scene (x, y-up, z towards the viewer).
+    const map = (p: Vec3) =>
+      new THREE.Vector3(
+        (((p[0] - dx[0]) / (dx[1] - dx[0])) * 2 - 1) * hx,
+        (((p[2] - dz[0]) / (dz[1] - dz[0])) * 2 - 1) * hz,
+        -(((p[1] - dy[0]) / (dy[1] - dy[0])) * 2 - 1) * hy,
+      );
+    mapRef.current = map;
+
+    // The frame (box, grid, tick labels) is rebuilt only when the ranges change.
+    // Label offsets are in scene units, so push them further out in short panels where text is relatively larger.
+    const textSize = Math.min(2, Math.max(1, 500 / height));
+    const frameKey = JSON.stringify([dx, dy, dz, half, labels, textSize]);
+    if (frameKey !== s.frameKey) {
+      s.frameKey = frameKey;
+      dispose(s.frame);
+      s.frame.clear();
+      const ink = cssVar('--text-muted') || '#605e5c';
+      const strong = cssVar('--text-secondary') || '#484644';
+      const gridColor = new THREE.Color(cssVar('--border-strong') || '#c8c6c4');
+      const box = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(2 * hx, 2 * hz, 2 * hy)),
+        new THREE.LineBasicMaterial({ color: gridColor }),
+      );
+      s.frame.add(box);
+
+      const sx = makeScale(dx[0], dx[1], false, 4);
+      const sy = makeScale(dy[0], dy[1], false, 4);
+      const sz = makeScale(dz[0], dz[1], false, 4);
+      const seg: number[] = [];
+      const line = (a: THREE.Vector3, b: THREE.Vector3) => seg.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      const label = (text: string, at: THREE.Vector3, bold = false) => {
+        const sp = textSprite(text, bold ? strong : ink, bold, height);
+        sp.position.copy(at);
+        s.frame.add(sp);
+      };
+      const inside = (t: number, d: [number, number]) => t >= d[0] && t <= d[1];
+      for (const t of sx.ticks.filter((v) => inside(v, dx))) {
+        line(map([t, dy[0], dz[0]]), map([t, dy[1], dz[0]]));
+        label(tickLabel(t), map([t, dy[0], dz[0]]).add(new THREE.Vector3(0, -0.09 * textSize, 0.13 * textSize)));
+      }
+      for (const t of sy.ticks.filter((v) => inside(v, dy))) {
+        line(map([dx[0], t, dz[0]]), map([dx[1], t, dz[0]]));
+        label(tickLabel(t), map([dx[1], t, dz[0]]).add(new THREE.Vector3(0.2 * textSize, -0.09 * textSize, 0)));
+      }
+      for (const t of sz.ticks.filter((v) => inside(v, dz))) {
+        line(map([dx[0], dy[1], t]), map([dx[1], dy[1], t]));
+        line(map([dx[0], dy[0], t]), map([dx[0], dy[1], t]));
+        label(tickLabel(t), map([dx[0], dy[0], t]).add(new THREE.Vector3(-0.22 * textSize, 0, 0.06)));
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
+      s.frame.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: gridColor, transparent: true, opacity: 0.5 })));
+      label(labels[0], new THREE.Vector3(0, -hz - 0.24 * textSize, hy + 0.3 * textSize), true);
+      label(labels[1], new THREE.Vector3(hx + 0.5 * textSize, -hz - 0.24 * textSize, 0), true);
+      label(labels[2], new THREE.Vector3(-hx - 0.3, hz + 0.16 * textSize, hy + 0.06), true);
+    }
+
+    dispose(s.content);
+    s.content.clear();
+    s.solid = [];
+
+    if (surface && surface.xs.length > 1 && surface.ys.length > 1) {
+      const nx = surface.xs.length;
+      const ny = surface.ys.length;
+      const pos = new Float32Array(nx * ny * 3);
+      const col = new Float32Array(nx * ny * 3);
+      const ok = new Uint8Array(nx * ny);
+      const c = new THREE.Color();
+      for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+          const k = j * nx + i;
+          const zv = surface.z[j]?.[i];
+          const fin = Number.isFinite(zv);
+          ok[k] = fin ? 1 : 0;
+          // Values beyond a pinned range are clamped to the box.
+          const zc = fin ? Math.min(dz[1], Math.max(dz[0], zv)) : dz[0];
+          const v = map([surface.xs[i], surface.ys[j], zc]);
+          pos.set([v.x, v.y, v.z], k * 3);
+          c.lerpColors(LO, HI, (zc - dz[0]) / (dz[1] - dz[0]));
+          col.set([c.r, c.g, c.b], k * 3);
+        }
+      }
+      const index: number[] = [];
+      for (let j = 0; j < ny - 1; j++) {
+        for (let i = 0; i < nx - 1; i++) {
+          const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
+          if (ok[a] && ok[b] && ok[d] && ok[e]) index.push(a, b, d, b, e, d);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.setIndex(index);
+      geo.computeVertexNormals();
+      s.content.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+
+      // A sparse mesh of grid lines makes the shape readable from any angle.
+      const wire: number[] = [];
+      const stepX = Math.max(1, Math.round(nx / 16));
+      const stepY = Math.max(1, Math.round(ny / 16));
+      const P = (i: number, j: number) => [pos[(j * nx + i) * 3], pos[(j * nx + i) * 3 + 1] + 0.003, pos[(j * nx + i) * 3 + 2]];
+      for (let j = 0; j < ny; j += stepY) for (let i = 0; i < nx - 1; i++) if (ok[j * nx + i] && ok[j * nx + i + 1]) wire.push(...P(i, j), ...P(i + 1, j));
+      for (let i = 0; i < nx; i += stepX) for (let j = 0; j < ny - 1; j++) if (ok[j * nx + i] && ok[(j + 1) * nx + i]) wire.push(...P(i, j), ...P(i, j + 1));
+      const wg = new THREE.BufferGeometry();
+      wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+      s.content.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 })));
+    }
+
+    for (const [li, l] of (lines ?? []).entries()) {
+      const flat: number[] = [];
+      for (const p of l.points) {
+        if (!p.every(Number.isFinite)) continue;
+        const v = map(p);
+        flat.push(v.x, v.y, v.z);
+      }
+      if (flat.length < 6) continue;
+      const color = new THREE.Color(cssVar(`--series-${((l.slot ?? li + 1) - 1) % 8 + 1}`) || '#2a78d6');
+      const make = (opacity: number, w: number) => {
+        const geo = new LineGeometry();
+        geo.setPositions(flat);
+        const mat = new LineMaterial({ color, linewidth: w, transparent: opacity < 1, opacity });
+        mat.resolution.set(width, height);
+        return new Line2(geo, mat);
+      };
+      if (progress !== undefined) s.content.add(make(0.22, 1.5));
+      const solid = make(1, 2.2);
+      s.content.add(solid);
+      s.solid.push(solid);
+    }
+    s.render();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surface, lines, equal, height, zDomain?.[0], zDomain?.[1], labels[0], labels[1], labels[2]]);
+
+  // Cheap per-frame updates: playback position and markers.
+  useEffect(() => {
+    const s = stage.current;
+    if (!s) return;
+    if (progress !== undefined) {
+      for (const l of s.solid) (l.geometry as LineGeometry).instanceCount = Math.max(0, Math.floor(progress));
+    }
+    const list = (markers ?? []).filter((m) => m.p.every(Number.isFinite));
+    // Reuse the marker meshes between frames; only their positions change during playback.
+    if (s.markers.children.length !== list.length) {
+      dispose(s.markers);
+      s.markers.clear();
+      for (const [i, m] of list.entries()) {
+        s.markers.add(new THREE.Mesh(
+          new THREE.SphereGeometry(0.045, 20, 14),
+          new THREE.MeshLambertMaterial({ color: new THREE.Color(cssVar(`--series-${((m.slot ?? i + 1) - 1) % 8 + 1}`) || '#eb6834') }),
+        ));
+      }
+    }
+    list.forEach((m, i) => s.markers.children[i].position.copy(mapRef.current(m.p)));
+    s.render();
+  });
+
+  return (
+    <div ref={wrap} className="plot3d" style={{ height }}>
+      <div ref={host} className="plot3d-host" role="img" aria-label={`3-D chart of ${labels[2]} over ${labels[0]} and ${labels[1]}`} />
+      <span className="plot3d-hint">Drag to rotate · scroll to zoom</span>
+    </div>
+  );
+}

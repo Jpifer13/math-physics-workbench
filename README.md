@@ -22,7 +22,8 @@ wire outputs into inputs, and end with a Result block.
 - **Equation view** — the flow is typeset as a formula, then with the numbers
   substituted, then the result: `E = mc²` → `(1 kg)(2.998×10⁸ m/s)²` → `8.99×10¹⁶ J`.
 - **Modeling panel** — sweep any input to chart the output as a curve
-  (linear or log axes), or sweep two inputs at once as a heat map.
+  (linear or log axes), or sweep two inputs at once as a heat map or a
+  rotatable **3D surface**.
 - Ten worked examples (E = mc², kinetic energy, gravitation, pendulum period,
   projectile range, Lorentz factor, de Broglie wavelength, ideal gas law,
   photon energy, escape velocity). Flows auto-save in the browser and
@@ -33,19 +34,29 @@ wire outputs into inputs, and end with a Result block.
 ### Simulation Lab
 Models defined as differential equations and integrated with 4th-order
 Runge–Kutta: projectile with drag, pendulum, driven damped spring, orbit,
-Lorenz attractor, RLC circuit, coupled oscillators.
+Lorenz attractor, charged particle in a magnetic field, RLC circuit, coupled
+oscillators.
 
 Each has an animated picture, a phase portrait, time-series charts, parameter
-sliders, and a "try this" prompt. Every equation, initial condition and
+sliders, and a "try this" prompt. Any model can also be viewed as a **3D
+path**: pick three variables (or time) as axes and orbit the camera around the
+trajectory as it plays — the Lorenz attractor and the magnetic-field helix
+open in 3D by default. Every equation, initial condition and
 parameter is editable, so any model can be turned into your own.
 
 ![Pendulum in the Simulation Lab](docs/simulation-lab.png)
 
+![Helical path of a charge in a magnetic field](docs/3d-helix.png)
+
 ### Math Tools
 - **Function grapher** — plot several functions, with symbolic derivative,
   slope at a point, definite integral, zeros and turning points.
+- **3D surfaces** — plot z = f(x, y, t) as a rotatable surface; include `t`
+  and it animates (wave interference, standing waves, potential wells).
 - **Vector fields** — arrow plot of any F(x, y); click to trace field lines.
 - **Units & constants** — converter and a constants reference table.
+
+![Two-source wave interference as a 3D surface](docs/3d-surface.png)
 
 ![Dipole field with traced field lines](docs/vector-field.png)
 
@@ -72,10 +83,11 @@ src/
     graph.ts      Flow graph model, evaluator, 1-D and 2-D sweeps
     ode.ts        ODE model definition and RK4 integrator
     numeric.ts    Derivative, Simpson integration, root and extremum finding
-  components/   Plot (SVG line chart), Heatmap, KaTeX wrapper, number field
+  components/   Plot (SVG line chart), Heatmap, Plot3D (three.js, lazy-loaded),
+                KaTeX wrapper, number field
   flow/         Node editor: store, block cards, palette, inspector, model panel
   sim/          Simulation Lab: model library, animated scene, editor
-  mathtools/    Grapher, vector field, units panel
+  mathtools/    Grapher, 3D surface plotter, vector field, units panel
 ```
 
 The key design decision is that **the engine knows nothing about the UI**. A
@@ -91,8 +103,8 @@ result. That is what makes each of these additions local:
   checks every bundled example evaluates without error.
 - **A new simulation** — one object in `sim/models.ts`.
 
-Stack: React 19, TypeScript, Vite, React Flow (`@xyflow/react`), mathjs,
-KaTeX, zustand, Vitest.
+Stack: React 19, TypeScript, Vite, React Flow (`@xyflow/react`), three.js,
+mathjs, KaTeX, zustand, Vitest.
 
 ## Ideas for next steps
 
