@@ -3,6 +3,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { newFlow, openFlow, saveFlow } from './files';
 import { evaluate } from '../core/graph';
 import type { PaletteItem } from './catalog';
 import { EXAMPLES } from './examples';
@@ -10,8 +11,8 @@ import { Inspector } from './Inspector';
 import { ModelPanel } from './ModelPanel';
 import { DRAG_MIME, findPaletteItem, Palette } from './Palette';
 import { PhysNode, ResultsContext } from './PhysNode';
-import { currentDoc, useFlow } from './store';
-import { toGraph, type FlowDoc } from './types';
+import { markSaved, useFlow } from './store';
+import { toGraph } from './types';
 
 const nodeTypes = { phys: PhysNode };
 // Stable handlers: React Flow re-runs selection callbacks whenever their identity changes.
@@ -31,9 +32,7 @@ function Editor() {
   const s = useFlow();
   const rf = useReactFlow();
   const wrap = useRef<HTMLDivElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
   const [showModel, setShowModel] = useState(true);
-  const [notice, setNotice] = useState('');
 
   const graphKey = JSON.stringify([s.nodes.map((n) => [n.id, n.data]), s.edges.map((e) => [e.source, e.target, e.targetHandle])]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,24 +60,7 @@ function Editor() {
     useFlow.getState().addNode(item.kind, item.cfg, { x: p.x - 110, y: p.y - 30 });
   }, [rf]);
 
-  const exportJson = () => {
-    const blob = new Blob([JSON.stringify(currentDoc(), null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${s.name.replace(/[^\w-]+/g, '-').toLowerCase() || 'flow'}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-  const importJson = async (file: File) => {
-    try {
-      const doc = JSON.parse(await file.text()) as FlowDoc;
-      if (!Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error('not a flow file');
-      s.load(doc);
-      setNotice('');
-    } catch {
-      setNotice('That file is not a valid flow export.');
-    }
-  };
+  const fileName = s.filePath?.split(/[\\/]/).pop();
 
   return (
     <ResultsContext.Provider value={results}>
@@ -87,28 +69,32 @@ function Editor() {
         <div className="flow-main">
           <div className="commandbar">
             <input className="flow-name" value={s.name} onChange={(e) => s.setMeta({ name: e.target.value })} aria-label="Flow name" />
+            <span className="file-status" title={s.filePath ?? 'Not saved to a file yet'}>
+              {fileName ?? 'Unsaved'}{s.dirty ? ' • edited' : ''}
+            </span>
             <span className="spacer" />
-            <label className="cmd">
-              Examples
-              <select
+            <select
+              className="examples"
                 value=""
                 onChange={(e) => {
                   const ex = EXAMPLES.find((x) => x.name === e.target.value);
-                  if (ex) s.load(ex);
+                  if (ex && (!s.dirty || confirm('This flow has unsaved changes. Discard them?'))) {
+                    s.load(ex);
+                    markSaved(null);
+                  }
                 }}
                 aria-label="Load an example flow"
               >
-                <option value="" disabled>Load…</option>
+                <option value="" disabled>Examples…</option>
                 {EXAMPLES.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
-              </select>
-            </label>
-            <button className="btn" onClick={() => { if (!s.nodes.length || confirm('Start a new, empty flow? The current one will be replaced.')) s.clear(); }}>New</button>
-            <button className="btn" onClick={() => fileInput.current?.click()}>Import</button>
-            <button className="btn" onClick={exportJson}>Export</button>
+            </select>
+            <button className="btn" onClick={newFlow}>New</button>
+            <button className="btn" onClick={() => void openFlow()}>Open</button>
+            <button className="btn" onClick={() => void saveFlow()} title={fileName ? `Save to ${s.filePath}` : 'Save this flow to a file'}>Save</button>
+            <button className="btn" onClick={() => void saveFlow(true)}>Save As</button>
             <button className="btn" onClick={() => setShowModel(!showModel)} aria-pressed={showModel}>{showModel ? 'Hide model' : 'Show model'}</button>
-            <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ''; }} />
           </div>
-          {notice && <div className="notice" role="alert">{notice} <button className="link" onClick={() => setNotice('')}>Dismiss</button></div>}
+          {s.notice && <div className="notice" role="alert">{s.notice} <button className="link" onClick={() => useFlow.setState({ notice: '' })}>Dismiss</button></div>}
           <div className="canvas" ref={wrap} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }} onDrop={onDrop}>
             <ReactFlow
               nodes={s.nodes}

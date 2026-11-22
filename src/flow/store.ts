@@ -8,6 +8,12 @@ const STORAGE_KEY = 'physics-tooling.flow.v1';
 
 interface FlowState extends FlowDoc {
   selectedId: string | null;
+  /** Path of the file this flow was opened from or last saved to. */
+  filePath: string | null;
+  /** True when the flow differs from what is on disk. */
+  dirty: boolean;
+  /** A dismissible error message for the editor. */
+  notice: string;
   /** Bumped whenever a whole document is loaded, so the canvas can re-fit. */
   docVersion: number;
   onNodesChange: (changes: NodeChangeset<FNode>) => void;
@@ -44,6 +50,9 @@ const newId = () => `n${Date.now().toString(36)}${(counter++).toString(36)}`;
 export const useFlow = create<FlowState>((set, get) => ({
   ...restore(),
   selectedId: null,
+  filePath: null,
+  dirty: false,
+  notice: '',
   docVersion: 0,
   onNodesChange: (changes) => {
     const nodes = changes.applyTo(get().nodes);
@@ -109,14 +118,27 @@ export const currentDoc = (): FlowDoc => {
   };
 };
 
+// Unsaved-changes tracking: compare against the last version written to (or read from) disk.
+let savedJson = JSON.stringify(currentDoc());
+
+/** Record that the current flow matches the file at `filePath`. */
+export function markSaved(filePath: string | null) {
+  savedJson = JSON.stringify(currentDoc());
+  useFlow.setState({ filePath, dirty: false, notice: '' });
+}
+
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 useFlow.subscribe(() => {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
+    const json = JSON.stringify(currentDoc());
+    const dirty = json !== savedJson;
+    if (dirty !== useFlow.getState().dirty) useFlow.setState({ dirty });
+    // Also keep a working copy so an unsaved flow survives closing the app.
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentDoc()));
+      localStorage.setItem(STORAGE_KEY, json);
     } catch {
-      /* storage unavailable — the flow simply isn't persisted */
+      /* storage unavailable — the working copy simply isn't kept */
     }
   }, 300);
 });

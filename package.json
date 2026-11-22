@@ -4,20 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "start": "npm run build && electron .",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dev:web": "vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
-  },
-  "dependencies": {
-    "@xyflow/react": "^13.0.2",
-    "katex": "^0.19.1",
-    "mathjs": "^15.2.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "three": "^0.187.0",
-    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",
@@ -25,8 +19,65 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "@xyflow/react": "^13.0.2",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "katex": "^0.19.1",
+    "mathjs": "^15.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "^0.187.0",
     "typescript": "^5.9.3",
     "vite": "^8.3.8",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "zustand": "^5.1.0"
+  },
+  "productName": "Physics Tooling",
+  "description": "A visual workbench for building and exploring physics equations.",
+  "author": "Physics Tooling",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "io.physicstooling.app",
+    "productName": "Physics Tooling",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "fileAssociations": [
+      {
+        "ext": "physflow",
+        "name": "Physics Flow",
+        "description": "Physics Tooling flow",
+        "role": "Editor"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "category": "Education;Science",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "maintainer": "Physics Tooling"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

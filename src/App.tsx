@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { desktop } from './desktop';
+import { loadOpened, newFlow, openFlow, saveFlow } from './flow/files';
 import { FlowEditor } from './flow/FlowEditor';
+import { useFlow } from './flow/store';
 import { MathTools } from './mathtools/MathTools';
 import { SimLab } from './sim/SimLab';
 
@@ -18,6 +21,31 @@ export function App() {
   useEffect(() => {
     history.replaceState(null, '', `#${tab}`);
   }, [tab]);
+
+  // Native menu commands and files opened from the operating system.
+  useEffect(() => {
+    if (!desktop) return;
+    const offMenu = desktop.onMenu((action) => {
+      if (action.startsWith('tab:')) return setTab(action.slice(4) as TabId);
+      setTab('flow');
+      if (action === 'new') newFlow();
+      else if (action === 'open') void openFlow();
+      else if (action === 'save') void saveFlow();
+      else if (action === 'saveAs') void saveFlow(true);
+    });
+    const offFile = desktop.onFileOpened((file) => {
+      setTab('flow');
+      loadOpened(file);
+    });
+    desktop.ready();
+    return () => { offMenu(); offFile(); };
+  }, []);
+
+  // Window title follows the open flow, as in any document app.
+  const title = useFlow((s) => `${s.dirty ? '• ' : ''}${s.filePath?.split(/[\\/]/).pop() ?? (s.name || 'Untitled flow')} — Physics Tooling`);
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
 
   return (
     <div className="app">

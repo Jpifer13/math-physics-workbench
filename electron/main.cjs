@@ -1,0 +1,222 @@
+/**
+ * Desktop shell: owns the window, the native menu and all file access.
+ * The UI (renderer) is sandboxed and can only reach the disk through the
+ * narrow, dialog-gated API exposed in preload.cjs.
+ */
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const DEV_URL = process.env.VITE_DEV_SERVER_URL;
+const isMac = process.platform === 'darwin';
+const FILE_FILTERS = [
+  { name: 'Physics flow', extensions: ['physflow', 'json'] },
+  { name: 'All files', extensions: ['*'] },
+];
+
+/** @type {BrowserWindow | null} */
+let win = null;
+let rendererReady = false;
+/** A flow file the OS asked us to open before the window was ready. */
+let pendingFile = null;
+/** Only paths the user picked in a dialog (or opened from the OS) may be written. */
+const approvedPaths = new Set();
+
+// ------------------------------------------------------------ window state
+const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
+function loadWindowState() {
+  try {
+    const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
+    if (Number.isFinite(s.width) && Number.isFinite(s.height)) return s;
+  } catch {
+    /* first launch */
+  }
+  return { width: 1440, height: 900 };
+}
+function saveWindowState() {
+  if (!win || win.isDestroyed()) return;
+  try {
+    fs.writeFileSync(stateFile(), JSON.stringify({ ...win.getNormalBounds(), maximized: win.isMaximized() }));
+  } catch {
+    /* not worth interrupting quit for */
+  }
+}
+
+// ------------------------------------------------------------------- files
+function readFlow(filePath) {
+  const text = fs.readFileSync(filePath, 'utf8');
+  approvedPaths.add(filePath);
+  app.addRecentDocument(filePath);
+  return { path: filePath, text };
+}
+
+function deliverFile(filePath) {
+  if (!win || !rendererReady) {
+    pendingFile = filePath;
+    return;
+  }
+  try {
+    win.webContents.send('file:opened', readFlow(filePath));
+  } catch (err) {
+    dialog.showErrorBox('Could not open file', String(err.message || err));
+  }
+}
+
+const flowArg = (argv) => argv.slice(1).find((a) => /\.(physflow|json)$/i.test(a) && fs.existsSync(a));
+
+ipcMain.handle('flow:open', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Open flow', properties: ['openFile'], filters: FILE_FILTERS });
+  if (r.canceled || !r.filePaths[0]) return null;
+  return readFlow(r.filePaths[0]);
+});
+
+ipcMain.handle('flow:save', async (_e, text, filePath, suggestedName) => {
+  if (typeof text !== 'string') throw new Error('Nothing to save');
+  let target = typeof filePath === 'string' && approvedPaths.has(filePath) ? filePath : null;
+  if (!target) {
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Save flow',
+      defaultPath: `${String(suggestedName || 'flow').replace(/[\\/:*?"<>|]+/g, '-')}.physflow`,
+      filters: FILE_FILTERS,
+    });
+    if (r.canceled || !r.filePath) return null;
+    target = r.filePath;
+  }
+  await fs.promises.writeFile(target, text, 'utf8');
+  approvedPaths.add(target);
+  app.addRecentDocument(target);
+  return target;
+});
+
+ipcMain.on('app:ready', () => {
+  rendererReady = true;
+  if (pendingFile) {
+    const f = pendingFile;
+    pendingFile = null;
+    deliverFile(f);
+  }
+});
+
+// -------------------------------------------------------------------- menu
+const send = (action) => () => win?.webContents.send('menu', action);
+
+function buildMenu() {
+  /** @type {Electron.MenuItemConstructorOptions[]} */
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    {
+      label: '&File',
+      submenu: [
+        { label: 'New Flow', accelerator: 'CmdOrCtrl+N', click: send('new') },
+        { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: send('open') },
+        ...(isMac ? [{ role: 'recentDocuments', submenu: [{ role: 'clearRecentDocuments' }] }] : []),
+        { type: 'separator' },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: send('save') },
+        { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: send('saveAs') },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' },
+      ],
+    },
+    { role: 'editMenu' },
+    {
+      label: '&View',
+      submenu: [
+        { label: 'Flow Builder', accelerator: 'CmdOrCtrl+1', click: send('tab:flow') },
+        { label: 'Simulation Lab', accelerator: 'CmdOrCtrl+2', click: send('tab:sim') },
+        { label: 'Math Tools', accelerator: 'CmdOrCtrl+3', click: send('tab:math') },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        ...(DEV_URL ? [{ type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }] : []),
+      ],
+    },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'About Physics Tooling',
+          click: () =>
+            dialog.showMessageBox(win, {
+              type: 'info',
+              title: 'About Physics Tooling',
+              message: 'Physics Tooling',
+              detail: `Version ${app.getVersion()}\nA visual workbench for building and exploring physics equations.`,
+            }),
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ------------------------------------------------------------------ window
+function createWindow() {
+  const state = loadWindowState();
+  rendererReady = false;
+  win = new BrowserWindow({
+    x: state.x,
+    y: state.y,
+    width: state.width,
+    height: state.height,
+    minWidth: 960,
+    minHeight: 620,
+    show: false,
+    backgroundColor: '#f3f2f1',
+    title: 'Physics Tooling',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  if (state.maximized) win.maximize();
+  win.once('ready-to-show', () => win.show());
+  win.on('close', saveWindowState);
+  win.on('closed', () => { win = null; });
+
+  // The window only ever shows the app itself; links open in the system browser.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (DEV_URL ? !url.startsWith(DEV_URL) : !url.startsWith('file:')) e.preventDefault();
+  });
+
+  if (DEV_URL) win.loadURL(DEV_URL);
+  else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+}
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    const f = flowArg(argv);
+    if (f) deliverFile(f);
+  });
+  // macOS: a flow file was double-clicked or dropped on the dock icon.
+  app.on('open-file', (e, filePath) => {
+    e.preventDefault();
+    if (app.isReady() && !win) createWindow();
+    deliverFile(filePath);
+  });
+  app.whenReady().then(() => {
+    pendingFile = pendingFile ?? flowArg(process.argv) ?? null;
+    buildMenu();
+    createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+  app.on('window-all-closed', () => {
+    if (!isMac) app.quit();
+  });
+}

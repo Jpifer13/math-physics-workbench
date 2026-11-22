@@ -1,6 +1,6 @@
 # Physics Tooling
 
-A visual workbench for learning physics: wire quantities and operations into
+A desktop app for learning physics: wire quantities and operations into
 equations, watch the result respond as you change inputs, and simulate systems
 that evolve in time.
 
@@ -26,8 +26,11 @@ wire outputs into inputs, and end with a Result block.
   rotatable **3D surface**.
 - Ten worked examples (E = mc², kinetic energy, gravitation, pendulum period,
   projectile range, Lorentz factor, de Broglie wavelength, ideal gas law,
-  photon energy, escape velocity). Flows auto-save in the browser and
-  import/export as JSON.
+  photon energy, escape velocity).
+- **Flows are files** — New / Open / Save / Save As from the File menu or
+  toolbar, using native dialogs. Flows are saved as `.physflow` (plain JSON),
+  the title bar shows the open file and whether it has unsaved edits, and the
+  working copy is restored if you quit without saving.
 
 ![Two-input map of kinetic energy](docs/flow-map.png)
 
@@ -62,19 +65,44 @@ parameter is editable, so any model can be turned into your own.
 
 ## Running it
 
+Requires Node 20 or newer.
+
 ```bash
 npm install
-npm run dev        # development server
+npm run dev        # launch the desktop app with hot reload
+npm start          # build, then launch the app as it will ship
 npm test           # unit tests
-npm run build      # type-check and production build into dist/
 ```
 
-Requires Node 20 or newer.
+### Building an installer
+
+```bash
+npm run dist       # installer for the OS you are on, written to release/
+npm run dist:dir   # unpacked app only (faster; good for a quick check)
+```
+
+This produces a `.dmg` on macOS, an NSIS `.exe` installer on Windows, and an
+`.AppImage` plus `.deb` on Linux. Each must be built on its own OS.
+
+To have GitHub build all three for you, copy
+[`docs/build-desktop.workflow.yml`](docs/build-desktop.workflow.yml) to
+`.github/workflows/build-desktop.yml`. It then runs from the Actions tab (or
+when you push a `v*` tag) and attaches the installers as artifacts.
+
+Builds are not code-signed, so macOS and Windows will warn on first launch
+until signing certificates are configured.
+
+Keyboard shortcuts: `Ctrl/Cmd+N` new, `O` open, `S` save, `Shift+S` save as,
+and `Ctrl/Cmd+1/2/3` to switch between the three workspaces.
 
 ## Architecture
 
 ```
+electron/
+  main.cjs      Desktop shell: window, native menu, file dialogs, disk access
+  preload.cjs   The only bridge to the UI (open/save/menu events)
 src/
+  desktop.ts    Typed view of that bridge
   core/         Framework-free engine (unit tested, no React)
     units.ts      SI dimension vectors, unit table, constants, formatting
     qmath.ts      Arithmetic on dimensional quantities, with unit errors
@@ -103,7 +131,12 @@ result. That is what makes each of these additions local:
   checks every bundled example evaluates without error.
 - **A new simulation** — one object in `sim/models.ts`.
 
-Stack: React 19, TypeScript, Vite, React Flow (`@xyflow/react`), three.js,
+**Desktop security.** The UI runs sandboxed with no Node access and a strict
+Content-Security-Policy (no network, no inline script). It can only touch the
+disk by asking the shell, and the shell will only write to a path the user
+chose in a dialog or opened from the OS.
+
+Stack: Electron, React 19, TypeScript, Vite, React Flow (`@xyflow/react`), three.js,
 mathjs, KaTeX, zustand, Vitest.
 
 ## Ideas for next steps
@@ -111,5 +144,6 @@ mathjs, KaTeX, zustand, Vitest.
 - Vector quantities and vector blocks (dot, cross, magnitude).
 - Feed a flow's output into a simulation as its force law.
 - Sub-flows: collapse a group of blocks into one reusable block.
-- Undo/redo and multiple saved flows.
+- Undo/redo, and a prompt to save when closing with unsaved edits.
+- Code signing and auto-update for the installers.
 - Uncertainty propagation alongside units.
