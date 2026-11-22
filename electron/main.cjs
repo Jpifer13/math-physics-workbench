@@ -217,6 +217,10 @@ ipcMain.handle('engine:run', (_e, id, code) => new Promise((resolve) => {
 // Unsaved-changes guard: the UI reports which documents are dirty; closing asks first.
 let dirtyDocs = [];
 let closeConfirmed = false;
+// Quitting (rather than closing the window) asked for the save prompt, so finish quitting once it is answered.
+// Matters on macOS, where closing the last window does not quit the app.
+let quitRequested = false;
+let quitAfterClose = false;
 ipcMain.on('doc:dirty', (_e, names) => { dirtyDocs = Array.isArray(names) ? names.map(String) : []; });
 ipcMain.on('app:close', () => {
   closeConfirmed = true;
@@ -326,8 +330,11 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
   closeConfirmed = false;
   win.on('close', (e) => {
+    if (!closeConfirmed) quitAfterClose = false;
     if (!closeConfirmed && dirtyDocs.length) {
       e.preventDefault();
+      const quitting = quitRequested;
+      quitRequested = false;
       const choice = dialog.showMessageBoxSync(win, {
         type: 'warning',
         buttons: ['Save', "Don't Save", 'Cancel'],
@@ -336,6 +343,8 @@ function createWindow() {
         message: `Save changes to ${dirtyDocs.join(' and ')}?`,
         detail: "Your changes will be lost if you don't save them.",
       });
+      // Cancel, or backing out of the Save dialog, leaves the app running.
+      quitAfterClose = quitting && choice !== 2;
       if (choice === 0) win.webContents.send('menu', 'saveAllAndClose');
       else if (choice === 1) {
         closeConfirmed = true;
@@ -345,7 +354,11 @@ function createWindow() {
     }
     saveWindowState();
   });
-  win.on('closed', () => { win = null; dirtyDocs = []; });
+  win.on('closed', () => {
+    win = null;
+    dirtyDocs = [];
+    if (quitAfterClose) app.quit();
+  });
 
   // The window only ever shows the app itself; links open in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -384,6 +397,7 @@ if (!app.requestSingleInstanceLock()) {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
+  app.on('before-quit', () => { quitRequested = true; });
   app.on('window-all-closed', () => {
     if (!isMac) app.quit();
   });
