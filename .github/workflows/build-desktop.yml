@@ -1,6 +1,6 @@
 # Builds installers for Windows, macOS and Linux.
-# To enable: copy this file to .github/workflows/build-desktop.yml
 # Run it by hand from the Actions tab, or push a tag like v0.1.0.
+# (Type-checking and tests on every push are in check.yml.)
 name: Build desktop app
 
 on:

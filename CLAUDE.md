@@ -49,6 +49,11 @@ The `Makefile` wraps these (`make` lists the targets). Two are worth knowing:
 reports whether SciPy, Octave and the other external tools are on the PATH.
 A new npm script should get a matching target.
 
+CI runs on every push and pull request (`.github/workflows/check.yml`, on
+Linux): `make check` with SciPy and Octave installed, a step that fails if any
+export test was skipped, all three builds, and the command line end to end.
+Installers are a separate workflow, run by hand or on a `v*` tag.
+
 Always run `npm run typecheck` as well as `npm test`: vitest does not
 type-check, so a wrong call signature in a test passes silently.
 
@@ -251,12 +256,11 @@ strokes; boot one with `xcrun simctl boot <id>` and `xcrun simctl openurl`.
   unpacked app (`npm run dist:dir`) builds with the right name and bundle id
   but was not launched; Windows has not been run at all.
 - Code signing and notarisation: documented in the README, never run.
-- The installer workflow (`docs/build-desktop.workflow.yml`): never run.
+- The installer workflow (`.github/workflows/build-desktop.yml`): in place,
+  never run.
 - The LaTeX summary: structurally tested, never compiled.
 
 **Waiting on the owner:**
-- Copy `docs/build-desktop.workflow.yml` to `.github/workflows/` to enable
-  installer builds (it could not be pushed from the original environment).
 - Signing certificates, if signed installers are wanted.
 - Whether to add a contributor agreement before accepting outside contributions.
 

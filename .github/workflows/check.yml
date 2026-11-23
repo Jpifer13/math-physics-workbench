@@ -1,0 +1,55 @@
+# Runs on every push and pull request: type-check, tests, and every build
+# that can be made on Linux. The export tests run scripts in Python and GNU
+# Octave, and skip themselves where those are missing, so both are installed
+# here; a green run means those exports were really checked.
+name: Check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install SciPy and GNU Octave for the export tests
+        run: |
+          python -m pip install --quiet numpy scipy
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends octave
+      - run: npm ci
+      - name: Tools the export tests will find
+        run: make doctor
+      - name: Type-check and test
+        run: make check
+      - name: Fail if the export tests were skipped
+        run: |
+          npx vitest run src/integrations --reporter=json --outputFile=export-tests.json
+          node -e "const r=require('./export-tests.json'); const skipped=r.numPendingTests+r.numTodoTests; console.log(r.numPassedTests+' passed, '+skipped+' skipped'); process.exit(skipped?1:0)"
+      - name: Build the desktop interface and the command line
+        run: npm run build
+      - name: Build the tablet web app
+        run: npm run build:web
+      - name: Run the command line end to end
+        run: |
+          node bin/math-physics-workbench.mjs template pendulum --out pendulum.physsim
+          node bin/math-physics-workbench.mjs check pendulum.physsim
+          node bin/math-physics-workbench.mjs run pendulum.physsim --out run.csv
+          node bin/math-physics-workbench.mjs experiment pendulum.physsim --out scan.csv
+          head -3 run.csv

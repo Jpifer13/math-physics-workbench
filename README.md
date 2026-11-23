@@ -246,10 +246,15 @@ npm run dist:dir   # unpacked app only (faster; good for a quick check)
 This produces a `.dmg` on macOS, an NSIS `.exe` installer on Windows, and an
 `.AppImage` plus `.deb` on Linux. Each must be built on its own OS.
 
-To have GitHub build all three for you, copy
-[`docs/build-desktop.workflow.yml`](docs/build-desktop.workflow.yml) to
-`.github/workflows/build-desktop.yml`. It then runs from the Actions tab (or
-when you push a `v*` tag) and attaches the installers as artifacts.
+GitHub builds all three with the
+[Build desktop app](.github/workflows/build-desktop.yml) workflow: run it from
+the Actions tab, or push a `v*` tag, and it attaches the installers as
+artifacts.
+
+Every push and pull request also runs the
+[Check](.github/workflows/check.yml) workflow: type-check, the full test
+suite with Python and GNU Octave installed so the export tests really run,
+the desktop, command-line and tablet builds, and the command line end to end.
 
 ### Signing the installers
 
