@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
+import './theme';
 import { WEB_BUILD } from './version';
 
 // The installed web app keeps its files so that it opens without a connection.

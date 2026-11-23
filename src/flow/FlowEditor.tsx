@@ -1,3 +1,4 @@
+import { cssColor, useTheme } from '../theme';
 import {
   Background, BackgroundVariant, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow,
 } from '@xyflow/react';
@@ -24,12 +25,15 @@ const onSelectionChange = ({ nodes }: { nodes: { id: string }[] }) => {
 const isValidConnection = (c: { source: string | null; target: string | null }) => c.source !== c.target;
 const snapGrid: [number, number] = [10, 10];
 const deleteKeys = ['Backspace', 'Delete'];
-const defaultEdgeOptions = {
+const edgeOptions = (color: string) => ({
   type: 'smoothstep',
-  markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: '#8a8886' },
-};
+  markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color },
+});
 
 function Editor() {
+  // Colours handed to the canvas as values are read again when the appearance changes.
+  const theme = useTheme((t) => t.theme);
+  const defaultEdgeOptions = useMemo(() => edgeOptions(cssColor('--edge', '#8a8886')), [theme]);
   const s = useFlow();
   const rf = useReactFlow();
   const wrap = useRef<HTMLDivElement>(null);
@@ -120,9 +124,9 @@ function Editor() {
               snapGrid={snapGrid}
               deleteKeyCode={deleteKeys}
             >
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="#d2d0ce" />
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color={cssColor('--flow-dot', '#d2d0ce')} />
               <Controls showInteractive={false} />
-              <MiniMap pannable zoomable nodeColor="#c8c6c4" maskColor="rgba(243,242,241,0.7)" style={{ width: 132, height: 88 }} />
+              <MiniMap pannable zoomable nodeColor={cssColor('--minimap-node', '#c8c6c4')} maskColor={cssColor('--minimap-mask', 'rgba(243,242,241,0.7)')} style={{ width: 132, height: 88 }} />
             </ReactFlow>
             <div className="canvas-tools">
               {selectedCount > 1 && <button className="btn small primary" onClick={s.groupSelected} title="Collapse the selected blocks into one block you can name, copy and reuse">Group {selectedCount} blocks</button>}

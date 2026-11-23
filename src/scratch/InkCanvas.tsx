@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { strokesNear, thin, type Stroke } from '../core/ink';
 import { INK, PEN_WIDTH, drawStroke } from '../recognize/raster';
+import { cssColor, useTheme } from '../theme';
 import { useScratch } from './store';
 
 export type Tool = 'pen' | 'rubber';
@@ -42,6 +43,8 @@ export function InkCanvas({ strokes, tool, fingerDraws, scrollY, onScroll, onPen
   const live = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 600, h: 400 });
   const active = useRef<Active | null>(null);
+  // Ink is dark on a light page and light on a dark one; the page is redrawn when the appearance changes.
+  const theme = useTheme((t) => t.theme);
   const fingers = useRef(new Map<number, number>());
   const panning = useRef(false);
   // Handlers read these through refs so they always see the latest values.
@@ -83,8 +86,9 @@ export function InkCanvas({ strokes, tool, fingerDraws, scrollY, onScroll, onPen
     }
     ctx.stroke();
     ctx.translate(0, -scrollY);
-    ctx.strokeStyle = INK;
-    ctx.fillStyle = INK;
+    const ink = cssColor('--ink', INK);
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
     for (const s of strokes) {
       // Skip what is out of view.
       let top = Infinity, bottom = -Infinity;
@@ -92,13 +96,14 @@ export function InkCanvas({ strokes, tool, fingerDraws, scrollY, onScroll, onPen
       if (bottom < scrollY - 10 || top > scrollY + size.h + 10) continue;
       drawStroke(ctx, s.pts, PEN_WIDTH);
     }
-  }, [strokes, scrollY, size, dpr]);
+  }, [strokes, scrollY, size, dpr, theme]);
 
   const liveCtx = () => {
     const ctx = live.current!.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, -scroll.current * dpr);
-    ctx.strokeStyle = INK;
-    ctx.fillStyle = INK;
+    const ink = cssColor('--ink', INK);
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
     return ctx;
   };
   const clearLive = () => {

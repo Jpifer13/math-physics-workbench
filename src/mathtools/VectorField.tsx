@@ -1,3 +1,4 @@
+import { useTheme } from '../theme';
 import { compile } from 'mathjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmtNum } from '../core/units';
@@ -15,6 +16,8 @@ const PRESETS = [
 
 const LO = [150, 187, 232];
 const HI = [9, 48, 105];
+const DARK_LO = [38, 72, 118];
+const DARK_HI = [190, 220, 255];
 const GRID = 23;
 
 export function VectorField() {
@@ -43,6 +46,9 @@ export function VectorField() {
     }
   }, [fx, fy]);
 
+  const theme = useTheme((t) => t.theme);
+  // Strong is dark on a light page and bright on a dark one.
+  const [weak, strong] = theme === 'dark' ? [DARK_LO, DARK_HI] : [LO, HI];
   useEffect(() => {
     const c = canvas.current;
     if (!c) return;
@@ -78,7 +84,7 @@ export function VectorField() {
     const cell = size / GRID;
     for (const p of pts) {
       const r = rank(p.m);
-      const col = LO.map((c0, k) => Math.round(c0 + (HI[k] - c0) * r));
+      const col = weak.map((c0, k) => Math.round(c0 + (strong[k] - c0) * r));
       const len = cell * (0.35 + 0.5 * r);
       const ux = p.u / p.m, uy = -p.v / p.m;
       const x0 = X(p.x) - (ux * len) / 2, y0 = Y(p.y) - (uy * len) / 2;
@@ -120,7 +126,7 @@ export function VectorField() {
       ctx.fillStyle = style.getPropertyValue('--series-2');
       ctx.beginPath(); ctx.arc(X(sx), Y(sy), 4, 0, 2 * Math.PI); ctx.fill();
     }
-  }, [field, half, seeds, size]);
+  }, [field, half, seeds, size, theme]);
 
   const toData = (e: React.MouseEvent) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -176,7 +182,7 @@ export function VectorField() {
             </div>
             <div className="field-legend">
               <span>weaker</span>
-              <span className="ramp" style={{ background: `linear-gradient(90deg, rgb(${LO.join(',')}), rgb(${HI.join(',')}))` }} />
+              <span className="ramp" style={{ background: `linear-gradient(90deg, rgb(${weak.join(',')}), rgb(${strong.join(',')}))` }} />
               <span>stronger</span>
               <span className="muted">· arrow colour and length rank the field strength within the window (±{fmtNum(half, 3)})</span>
             </div>
