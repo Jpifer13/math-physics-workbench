@@ -85,6 +85,21 @@ describe('ink geometry', () => {
       expect(groupLines([sigmaSign, term, ink(305, 335, 82, 96), ink(305, 335, 154, 168)])).toHaveLength(1);
     });
 
+    it('keeps the limits written above and below an integral sign with it', () => {
+      // Measured from the page: ∞ above the sign with an ordinary gap, 0 below, then x² dx.
+      const upper = ink(144, 172, 241, 262);
+      const integral = [ink(148, 165, 275, 313), ink(150, 164, 324, 348), ink(196, 213, 286, 313), ink(217, 230, 275, 289), ink(237, 255, 282, 312), ink(255, 272, 293, 313)];
+      const lines = groupLines([upper, ...integral]);
+      expect(lines).toHaveLength(1);
+      expect(lines[0].ids).toHaveLength(7);
+    });
+
+    it('does not swallow a short line written under a long one', () => {
+      const long = [ink(100, 125, 100, 130), ink(135, 160, 100, 130), ink(170, 195, 100, 130), ink(205, 230, 100, 130), ink(240, 265, 100, 130)];
+      const short = [ink(100, 125, 146, 176)];
+      expect(groupLines([...long, ...short])).toHaveLength(2);
+    });
+
     it('does not take a minus sign for a fraction bar', () => {
       // "a − b" on one row, with other lines above and below it at ordinary spacing.
       const above = [ink(100, 130, 40, 80), ink(140, 170, 40, 80)];

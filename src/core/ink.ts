@@ -127,7 +127,15 @@ export function groupLines(strokes: Stroke[]): InkLine[] {
         if (width(small.box) * Math.max(height(small.box), 1) > 0.45 * width(big.box) * Math.max(height(big.box), 1)) continue;
         const dx = gap(small.box.x0, small.box.x1, big.box.x0, big.box.x1);
         const dy = gap(small.box.y0, small.box.y1, big.box.y0, big.box.y1);
-        if (dx > 0.5 * size || dy > 0.5 * size) continue;
+        // Limits are written with room to spare above and below a tall sign (an integral, a sum):
+        // directly over or under one, a wider gap still belongs to it.
+        const limit = big.members.some((i) => {
+          const sign = boxes[i];
+          if (height(sign) < 1.3 * size) return false;
+          const over = -gap(small.box.x0, small.box.x1, sign.x0, sign.x1) >= 0.5 * Math.min(width(small.box), width(sign));
+          return over && gap(small.box.y0, small.box.y1, sign.y0, sign.y1) <= size;
+        });
+        if (!limit && (dx > 0.5 * size || dy > 0.5 * size)) continue;
         const d = Math.max(dx, 0) + Math.max(dy, 0);
         if (d < bestGap) { bestGap = d; best = big; }
       }
