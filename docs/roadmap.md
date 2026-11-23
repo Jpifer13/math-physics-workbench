@@ -238,8 +238,11 @@ likely mistakes that are not errors: an unused parameter, a misspelt name with
 the closest match, a state that never changes, an event that cannot fire or
 did not, a stop condition never met, a fixed step too coarse. Each of the five
 simulation views shows a short explanation until dismissed.
+A guided tour opens on first launch and walks through every workspace and
+view, lighting up each part of the window in turn.
 **Limits:** completion and the model check cover simulations, not equation
-flows or the math tools; there is no guided tour.
+flows or the math tools. The tour shows where things are; it does not have
+the user build anything.
 
 ### 12. No way to drive it from a script
 

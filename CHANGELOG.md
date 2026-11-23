@@ -12,6 +12,13 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 
 ## [Unreleased]
 
+### Added
+
+- **A guided tour.** On first launch the app offers a short walk round: it
+  lights up each part of the window in turn, switches workspaces and views
+  for you, and explains what each is for. Take it again from Help ▸ Take the
+  Tour, or the **?** at the top right.
+
 ## [0.2.0] — 2026-11-22
 
 The first release with installers, for Windows, macOS and Linux. They are

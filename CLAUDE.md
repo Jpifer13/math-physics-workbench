@@ -29,7 +29,7 @@ doubled in native menu labels on Windows and Linux (`menuLabel` in
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~280 tests
+npm test             # vitest; ~290 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
@@ -94,6 +94,8 @@ src/sim/               Simulations workspace (the main one)
   models.ts              Templates
 src/cli/               Command-line mode: cli.ts (text in, text out; tested), main.ts (Node)
 bin/                   Launcher for the built command-line bundle
+src/tour/              The guided walkthrough: steps.ts (the content), place.ts
+                       (where the card goes; tested), Tour.tsx, store.ts
 src/flow/              Equation Flows workspace (React Flow node editor)
 src/scratch/           Scratchpad workspace: pen canvas, readings, answers
 src/recognize/         Handwriting recognition: on-device model (in a worker),
@@ -134,6 +136,10 @@ UI.** New numerical behaviour goes there with tests; views only display it.
 - **Supported functions.** A function the solver accepts gets an entry in
   `REFERENCE` (`core/reference.ts`) with an example and its value; the tests
   run every entry through the solver. `ln` is not accepted (use `log`).
+- **The walkthrough points at real elements.** Each step in `tour/steps.ts`
+  names a CSS selector. Rename or remove a class it uses and that step falls
+  back to a centred card with nothing lit; the unit tests cannot see this, so
+  step through the tour in the built app after changing the layout.
 - **Plain-language errors.** Messages say what happened and what to do, in the
   user's terms. No raw exceptions in the UI.
 - **Commits** go on a feature branch, not straight to `main`.
@@ -199,7 +205,7 @@ support:
 const { _electron } = require('playwright');
 const app = await _electron.launch({
   executablePath: require('electron'),   // path to the Electron binary
-  args: ['.', '--user-data-dir=/some/fresh/dir'],
+  args: ['.', '--user-data-dir=/some/fresh/dir', '--skip-tour'],
 });
 const win = await app.firstWindow();
 // Native dialogs cannot be clicked; stub them in the main process:
@@ -209,7 +215,9 @@ await app.evaluate(({ dialog }, file) => {
 }, '/tmp/out.physsim');
 ```
 
-Use a fresh `--user-data-dir` each run: the app restores the last working copy
+`--skip-tour` keeps the first-launch walkthrough closed; without it a fresh
+profile opens with the tour's layer over the window and no click reaches the
+app. Use a fresh `--user-data-dir` each run: the app restores the last working copy
 from local storage, which otherwise leaks state between runs. On a headless
 Linux box add `--no-sandbox` and run under `xvfb-run`; WebGL there needs
 `--use-angle=swiftshader --enable-unsafe-swiftshader`.

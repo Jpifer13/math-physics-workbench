@@ -77,6 +77,11 @@ view on the left and every edit re-runs immediately.
   the fit* then gives intervals that do not rely on the linear approximation,
   and *Bootstrap* gives them by resampling the data and refitting 200 times.
   The imported data is saved in the simulation file.
+- **A guided tour** — the first time the app opens it offers a two-minute
+  walk round: sixteen short steps that light up each part of the window in
+  turn, switch between the workspaces and views for you, and say what each is
+  for. Skip it at any point; take it again from Help ▸ Take the Tour or the
+  **?** at the top right.
 - **Help while you work** — equation fields offer to finish the name you are
   typing (the model's own names first, then functions), and *Functions and
   syntax* opens a searchable reference with a worked example for every entry.

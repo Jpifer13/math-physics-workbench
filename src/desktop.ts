@@ -3,7 +3,7 @@ export interface OpenedFile {
   path: string;
   text: string;
 }
-export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'compare' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math' | 'tab:scratch';
+export type MenuAction = 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'compare' | 'tour' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math' | 'tab:scratch';
 export type DocExt = 'physsim' | 'physflow';
 
 export type ExportExt = 'csv' | 'json' | 'svg' | 'png' | 'pdf' | 'py' | 'm' | 'wl' | 'jl';
@@ -18,6 +18,8 @@ export interface EngineInfo {
 
 export interface DesktopApi {
   platform: string;
+  /** True when the app was started with --skip-tour (automated runs). */
+  skipTour: boolean;
   openDocument(): Promise<OpenedFile | null>;
   saveDocument(text: string, filePath: string | null, suggestedName: string, ext: DocExt): Promise<string | null>;
   exportFile(text: string, suggestedName: string, ext: ExportExt, encoding?: 'utf8' | 'base64'): Promise<string | null>;

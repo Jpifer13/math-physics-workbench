@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Hint } from '../components/Hint';
 import { simulate } from '../core/ode';
 import { Definition } from './Definition';
@@ -8,17 +8,10 @@ import { ToolsView } from './ToolsView';
 import { RunView } from './RunView';
 import { UncertaintyView } from './UncertaintyView';
 import { useSim } from './store';
-
-const VIEWS = [
-  { id: 'run', name: 'Run', hint: 'Integrate the system once and inspect it' },
-  { id: 'experiment', name: 'Experiment', hint: 'Scan one or two parameters and measure the response' },
-  { id: 'uncertainty', name: 'Uncertainty', hint: 'Give parameters a spread, then see how much a result varies and which inputs drive it' },
-  { id: 'fit', name: 'Fit to data', hint: 'Import measurements and fit the model\'s parameters to them' },
-  { id: 'tools', name: 'Other software', hint: 'Export the model as code, or run it in MATLAB, Python, Mathematica or Julia and compare' },
-] as const;
+import { SIM_VIEWS, useSimView, type SimViewId } from './view';
 
 /** Shown the first time each view is opened, until dismissed. */
-const TIPS: Record<(typeof VIEWS)[number]['id'], string> = {
+const TIPS: Record<SimViewId, string> = {
   run: 'This is one run of the model on the left; change anything there and it runs again at once. Click a value in the Measurements table to make it an expectation, and use Check accuracy before relying on a number.',
   experiment: 'An experiment repeats the run across a range of one parameter, or two, and plots one measured number per run. Use it to find where a response peaks or how it scales.',
   uncertainty: 'Tick the parameters you do not know exactly and give each a spread. They are all varied together, which gives the spread of a result and a ranking of which inputs cause it.',
@@ -30,7 +23,8 @@ const TIPS: Record<(typeof VIEWS)[number]['id'], string> = {
 export function SimLab() {
   const model = useSim((s) => s.model);
   const notice = useSim((s) => s.notice);
-  const [view, setView] = useState<(typeof VIEWS)[number]['id']>('run');
+  const view = useSimView((s) => s.view);
+  const setView = useSimView((s) => s.setView);
 
   // Display-only settings don't change the numbers, so they shouldn't trigger a re-run.
   const { states, params, derived, tEnd, dt, method, tol, stopWhen, events } = model;
@@ -42,7 +36,7 @@ export function SimLab() {
       <Definition run={run} />
       <main className="sim-main">
         <div className="subtabs inline" role="tablist">
-          {VIEWS.map((v) => (
+          {SIM_VIEWS.map((v) => (
             <button key={v.id} role="tab" aria-selected={view === v.id} className={view === v.id ? 'on' : ''} title={v.hint} onClick={() => setView(v.id)}>{v.name}</button>
           ))}
         </div>

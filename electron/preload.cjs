@@ -9,6 +9,8 @@ const subscribe = (channel) => (callback) => {
 
 contextBridge.exposeInMainWorld('desktop', {
   platform: process.platform,
+  /** Started with --skip-tour: the first-launch walkthrough stays closed (automated runs). */
+  skipTour: process.argv.includes('--skip-tour'),
   /** Show the Open dialog. Resolves to { path, text } or null if cancelled. */
   openDocument: () => ipcRenderer.invoke('doc:open'),
   /** Write a document ('physsim' | 'physflow'). With no path the Save dialog is shown. Resolves to the path, or null. */
@@ -29,7 +31,7 @@ contextBridge.exposeInMainWorld('desktop', {
   setDirty: (names) => ipcRenderer.send('doc:dirty', names),
   /** Close the window without asking again (after the user chose Save). */
   closeWindow: () => ipcRenderer.send('app:close'),
-  /** Menu commands: 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'compare' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math'. */
+  /** Menu commands: 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'compare' | 'tour' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math'. */
   onMenu: subscribe('menu'),
   /** A document opened from the operating system (double-click, "Open with"). */
   onFileOpened: subscribe('file:opened'),

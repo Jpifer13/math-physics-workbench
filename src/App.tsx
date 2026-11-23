@@ -11,6 +11,8 @@ import { Scratchpad } from './scratch/Scratchpad';
 import { TABS, useNav, type TabId } from './nav';
 import { SimLab } from './sim/SimLab';
 import { useSim } from './sim/store';
+import { Tour } from './tour/Tour';
+import { useTour } from './tour/store';
 
 const fileName = (p: string | null) => p?.split(/[\\/]/).pop();
 
@@ -31,6 +33,7 @@ export function App() {
       if (action === 'undo' || action === 'redo') return undoRedo(action);
       if (action === 'open') return void openDocument();
       if (action === 'compare') return void compareWithFile();
+      if (action === 'tour') return useTour.getState().start();
       if (action === 'saveAllAndClose') return void saveAllDirty().then((ok) => ok && desktop?.closeWindow());
       // Save acts on the workspace in view; Math Tools has no document, so fall back to the simulation.
       const kind = activeKind() ?? 'sim';
@@ -65,6 +68,8 @@ export function App() {
             <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)} title={t.hint}>{t.name}</button>
           ))}
         </nav>
+        <span className="spacer" />
+        <button className="tour-button" onClick={() => useTour.getState().start()} title="Take the tour: a short walk round the app" aria-label="Take the tour">?</button>
       </header>
       <div className="workspace">
         {tab === 'sim' && <SimLab />}
@@ -74,6 +79,7 @@ export function App() {
       </div>
       <CompareDialog />
       <ReferenceDialog />
+      <Tour />
     </div>
   );
 }

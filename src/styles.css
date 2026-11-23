@@ -658,3 +658,26 @@ ul.howto { padding-left: 18px; }
   .scratch-num { width: 30px; height: 30px; }
   input[type='checkbox'], input[type='radio'] { width: 18px; height: 18px; }
 }
+
+/* -------------------------------------------------------------- walkthrough */
+.tour-button {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.55); background: transparent; color: #fff;
+  font-weight: 700; font-size: 13px; cursor: pointer; flex: none; align-self: center;
+}
+.tour-button:hover { background: rgba(255, 255, 255, 0.16); }
+/* A layer over the whole window: the app underneath cannot be clicked while the tour is open. */
+.tour { position: fixed; inset: 0; z-index: 200; }
+/* The lit area; its enormous shadow is what dims everything else. */
+.tour-shade {
+  position: absolute; border-radius: 6px; box-shadow: 0 0 0 200vmax rgba(15, 23, 42, 0.5); outline: 2px solid rgba(255, 255, 255, 0.9);
+  transition: left 0.18s, top 0.18s, width 0.18s, height 0.18s; pointer-events: none;
+}
+.tour-card {
+  position: absolute; width: min(340px, calc(100vw - 20px)); background: var(--surface); border-radius: 8px; padding: 14px 16px 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); color: var(--text);
+}
+.tour-card h3 { font-size: 15px; margin-bottom: 6px; }
+.tour-card p { margin: 0 0 12px; line-height: 1.5; color: var(--text-secondary); font-size: 13px; }
+.tour-actions { display: flex; align-items: center; gap: 6px; }
+.tour-count { font-size: 12px; color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) { .tour-shade { transition: none; } }

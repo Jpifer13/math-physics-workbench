@@ -335,6 +335,8 @@ function buildMenu() {
     {
       role: 'help',
       submenu: [
+        { label: 'Take the Tour', click: send('tour') },
+        { type: 'separator' },
         {
           label: menuLabel(`About ${APP_NAME}`),
           click: () =>
@@ -370,6 +372,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Lets an automated run say it does not want the first-launch walkthrough in its way.
+      additionalArguments: process.argv.includes('--skip-tour') ? ['--skip-tour'] : [],
     },
   });
   if (state.maximized) win.maximize();

@@ -20,7 +20,7 @@ function Section({ title, count, children, defaultOpen = true, action }: {
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="def-section">
+    <section className="def-section" data-section={title.toLowerCase()}>
       <div className="def-head">
         <button className="def-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
           <span className={`chev${open ? ' open' : ''}`}>›</span>
