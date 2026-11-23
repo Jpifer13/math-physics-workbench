@@ -68,8 +68,18 @@ const CALL: Record<string, (...a: number[]) => number> = {
 function integral(f: Fn, lo: number, hi: number): number {
   if (lo > hi) return -integral(f, hi, lo);
   if (Number.isFinite(lo) && Number.isFinite(hi)) return integrate(f, lo, hi);
+  // An integral with no finite value still adds up to some number at any one resolution, a larger one
+  // the finer the steps. Only an answer that holds still as the steps are refined is an answer.
+  const fine = improper(f, lo, hi, 20000);
+  const coarse = improper(f, lo, hi, 5000);
+  if (!Number.isFinite(fine) || Math.abs(fine - coarse) > 1e-4 * Math.max(1, Math.abs(fine))) {
+    throw new MathReadError('This integral does not settle on a value — it may be infinite. Give it finite limits to get a number.');
+  }
+  return fine;
+}
+
+function improper(f: Fn, lo: number, hi: number, n: number): number {
   // Midpoint rule, which never samples the ends where the mapping blows up.
-  const n = 20000;
   let s = 0;
   if (!Number.isFinite(lo) && !Number.isFinite(hi)) {
     for (let i = 0; i < n; i++) {
