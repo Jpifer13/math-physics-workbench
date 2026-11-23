@@ -1,6 +1,7 @@
 import { readStored, storageKey } from '../core/brand';
 import { create } from 'zustand';
 import type { Stroke } from '../core/ink';
+import { repairReading } from '../core/latexMath';
 
 const STORAGE = 'scratch.v1';
 
@@ -62,7 +63,8 @@ export const useScratch = create<ScratchState>((set, get) => {
     strokes: saved.strokes,
     past: [],
     future: [],
-    readings: Object.fromEntries(Object.entries(saved.readings).map(([k, latex]) => [k, { latex }])),
+    // Readings saved by an earlier version get the repairs this one knows.
+    readings: Object.fromEntries(Object.entries(saved.readings).map(([k, latex]) => [k, { latex: repairReading(latex) }])),
     typed: saved.typed,
     addStroke: (pts) => {
       change([...get().strokes, { id: nextId++, pts }]);
