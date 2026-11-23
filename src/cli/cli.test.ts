@@ -225,7 +225,8 @@ describe('template', () => {
       expect(h.run('run', 'm.physsim'), id).toBe(0);
       expect(h.run('experiment', 'm.physsim'), id).toBe(0);
     }
-  });
+    // Several hundred simulations: a few seconds here, longer on a shared CI machine.
+  }, 60_000);
 
   it('names the templates when asked for one that does not exist', () => {
     const h = harness();
