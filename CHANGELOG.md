@@ -12,6 +12,13 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-11-22
+
+The first release with installers, for Windows, macOS and Linux. They are
+unsigned, so macOS and Windows warn on first launch. Only the macOS installer
+has been run; see "State of the work" in `CLAUDE.md` for what is and is not
+verified.
+
 ### Added
 
 - Continuous integration: every push is type-checked, tested (with the
@@ -101,8 +108,8 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 
 ## [0.1.0] — 2026-11-22
 
-First tagged state of the project. Nothing has been published as an installer
-yet; see "State of the work" in `CLAUDE.md` for what is and is not verified.
+The project as first recorded. It was never tagged, and no installer was
+published for it.
 
 ### Simulations
 
