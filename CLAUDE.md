@@ -180,6 +180,11 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   state pass through.
 - **Electron downloads on first use.** `npm install` no longer fetches the
   binary; the first `npm start` or `npm run dev` does.
+- **`npm ci` on Linux needs the GPU download skipped.** `onnxruntime-node`
+  (pulled in by the handwriting library, never used by the app) tries to fetch
+  CUDA binaries and fails. `.npmrc` and the workflows' `env` both turn that
+  off; npm warns that it will stop passing the `.npmrc` setting through in a
+  future major version, at which point set `ONNXRUNTIME_NODE_INSTALL_CUDA=skip`.
 - **The save prompt blocks quitting.** With unsaved changes, closing the window
   shows a native Save / Don't Save / Cancel dialog. Automated runs must answer
   it or they hang.

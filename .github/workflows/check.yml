@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # The handwriting library's Node runtime tries to download GPU binaries on Linux and fails when
+  # they are not published. The app only runs that library in the browser. (.npmrc says the same
+  # for local installs; this does not depend on npm passing unknown settings through.)
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
