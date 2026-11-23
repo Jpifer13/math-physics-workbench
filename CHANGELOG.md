@@ -35,6 +35,10 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   spellings are accepted, and a handwritten integral whose sign was read as
   a sum is put right when its term ends in dx.
 
+- **Scratchpad: an integral with no finite value says so.** The integral of
+  x² from 0 to ∞ was given as about 1.3 × 10¹⁴, a meaningless number. It now
+  reports that the integral does not settle on a value.
+
 ## [0.2.0] — 2026-11-22
 
 The first release with installers, for Windows, macOS and Linux. They are

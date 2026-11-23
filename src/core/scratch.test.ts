@@ -177,6 +177,18 @@ describe('the notebook', () => {
     }
   });
 
+  it('says so when an integral to infinity has no finite value', () => {
+    // This one used to be given as 1.2987206e14: whatever the sum happened to reach.
+    for (const divergent of ['\\int_0^{\\infty} x^2 dx', '\\int_1^{\\infty} \\frac{1}{x} dx', '\\int_{-\\infty}^{\\infty} x^2 dx', '\\int_{-\\infty}^{0} 1 dx']) {
+      const line = value(divergent);
+      expect(line.kind, divergent).toBe('error');
+      expect(JSON.stringify(line), divergent).toMatch(/does not settle/);
+    }
+    expect(value('\\int_1^{\\infty} \\frac{1}{x^2} dx').value).toBeCloseTo(1, 5);
+    expect(value('\\int_0^{\\infty} e^{-x} dx').value).toBeCloseTo(1, 5);
+    expect(value('\\int_{-\\infty}^{0} e^{x} dx').value).toBeCloseTo(1, 5);
+  });
+
   it('works out sums, products and definite integrals', () => {
     expect(value('\\sum_{n=1}^{100} n').value).toBe(5050);
     expect(value('\\prod_{k=1}^{5} k').value).toBe(120);
