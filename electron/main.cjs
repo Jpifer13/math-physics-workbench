@@ -321,6 +321,7 @@ function buildMenu() {
         { label: 'Simulations', accelerator: 'CmdOrCtrl+1', click: send('tab:sim') },
         { label: 'Equation Flows', accelerator: 'CmdOrCtrl+2', click: send('tab:flow') },
         { label: 'Math Tools', accelerator: 'CmdOrCtrl+3', click: send('tab:math') },
+        { label: 'Scratchpad', accelerator: 'CmdOrCtrl+4', click: send('tab:scratch') },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },

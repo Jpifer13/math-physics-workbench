@@ -8,6 +8,8 @@ import pkg from './package.json' with { type: 'json' };
  */
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // No icons or manifest: those belong to the interface.
+  publicDir: false,
   build: {
     ssr: 'src/cli/main.ts',
     outDir: 'dist/cli',

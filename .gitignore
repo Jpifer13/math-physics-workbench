@@ -4,3 +4,6 @@ dist
 .DS_Store
 release
 .claude/worktrees
+dist-web
+public/models
+public/ort

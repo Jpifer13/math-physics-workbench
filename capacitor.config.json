@@ -1,0 +1,9 @@
+{
+  "appId": "io.mathphysicsworkbench.app",
+  "appName": "Math & Physics Workbench",
+  "webDir": "dist-web",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0f548c"
+  }
+}

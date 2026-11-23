@@ -11,9 +11,10 @@ import { currentDoc, markSaved, useFlow } from './flow/store';
 import { createHistory, type History } from './history';
 import type { FlowDoc } from './flow/types';
 import { useNav } from './nav';
-import { saveFile } from './saveFile';
+import { deliver, saveFile } from './saveFile';
 import { APP_VERSION, FILE_FORMAT } from './version';
 import { blankModel, markSimSaved, normalizeModel, useSim } from './sim/store';
+import { useScratch } from './scratch/store';
 
 export type DocKind = 'sim' | 'flow';
 
@@ -67,6 +68,7 @@ export function undoRedo(direction: 'undo' | 'redo') {
     document.execCommand(direction);
     return;
   }
+  if (useNav.getState().tab === 'scratch') return useScratch.getState()[direction]();
   const kind = activeKind();
   if (kind) histories[kind][direction]();
 }
@@ -114,6 +116,15 @@ export function newDocument(kind: DocKind) {
   KINDS[kind].mark(null);
   histories[kind].reset();
   useNav.getState().setTab(kind);
+}
+
+/** Open a model made elsewhere in the app (the scratchpad) as a new, unsaved simulation. */
+export function openGeneratedModel(model: OdeModel) {
+  if (!confirmDiscard('sim')) return;
+  KINDS.sim.mark(null);
+  useSim.getState().load(model);
+  histories.sim.reset();
+  useNav.getState().setTab('sim');
 }
 
 /** Ask for a document file without loading it. Resolves to null if the user cancels. */
@@ -188,14 +199,6 @@ export function holdComparedRun() {
   if (c?.model) useSim.getState().setReference({ run: simulate(c.model), label: `from ${c.fileName}` });
 }
 
-function download(text: string, fileName: string, type: string) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
 export async function saveDocument(kind: DocKind, saveAs = false) {
   const k = KINDS[kind];
   const text = k.serialize();
@@ -209,8 +212,8 @@ export async function saveDocument(kind: DocKind, saveAs = false) {
     }
     return;
   }
-  download(text, `${(k.name() || 'untitled').replace(/[^\w-]+/g, '-').toLowerCase()}.${k.ext}`, 'application/json');
-  k.mark(filePath);
+  const saved = await deliver(new Blob([text], { type: 'application/json' }), `${(k.name() || 'untitled').replace(/[^\w-]+/g, '-').toLowerCase()}.${k.ext}`);
+  if (saved) k.mark(filePath);
 }
 
 /** Export tabular data as CSV. Resolves to a short confirmation, or '' if cancelled. */
@@ -228,7 +231,7 @@ export async function exportScript(text: string, suggestedName: string, ext: 'py
 /** The document kind the File menu acts on for the current workspace. */
 export const activeKind = (): DocKind | null => {
   const tab = useNav.getState().tab;
-  return tab === 'math' ? null : tab;
+  return tab === 'sim' || tab === 'flow' ? tab : null;
 };
 
 /** Pick a data table to import. Resolves to its name and text, or null if cancelled. */

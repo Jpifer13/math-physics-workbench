@@ -7,6 +7,7 @@ import { activeKind, compareWithFile, dirtyDocuments, loadOpened, newDocument, o
 import { FlowEditor } from './flow/FlowEditor';
 import { useFlow } from './flow/store';
 import { MathTools } from './mathtools/MathTools';
+import { Scratchpad } from './scratch/Scratchpad';
 import { TABS, useNav, type TabId } from './nav';
 import { SimLab } from './sim/SimLab';
 import { useSim } from './sim/store';
@@ -50,7 +51,7 @@ export function App() {
   // Window title follows the document in view, as in any document app.
   const simTitle = useSim((s) => `${s.dirty ? '• ' : ''}${fileName(s.filePath) ?? (s.model.name || 'Untitled simulation')}`);
   const flowTitle = useFlow((s) => `${s.dirty ? '• ' : ''}${fileName(s.filePath) ?? (s.name || 'Untitled flow')}`);
-  const title = tab === 'sim' ? simTitle : tab === 'flow' ? flowTitle : 'Math Tools';
+  const title = tab === 'sim' ? simTitle : tab === 'flow' ? flowTitle : tab === 'scratch' ? 'Scratchpad' : 'Math Tools';
   useEffect(() => {
     document.title = `${title} — ${APP_NAME}`;
   }, [title]);
@@ -69,6 +70,7 @@ export function App() {
         {tab === 'sim' && <SimLab />}
         {tab === 'flow' && <FlowEditor />}
         {tab === 'math' && <MathTools />}
+        {tab === 'scratch' && <Scratchpad />}
       </div>
       <CompareDialog />
       <ReferenceDialog />
