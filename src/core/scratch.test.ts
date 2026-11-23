@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MathReadError, parseLatex, toMathText } from './latexMath';
+import { MathReadError, parseLatex, repairReading, toMathText } from './latexMath';
 import { simulate } from './ode';
 import { evaluateNotebook } from './scratch';
 
@@ -162,6 +162,19 @@ describe('the notebook', () => {
     expect(value('\\sqrt { 1 4 } =').value).toBeCloseTo(Math.sqrt(14), 9);
     expect(value('\\frac { 7 } { 1 2 } =').value).toBeCloseTo(7 / 12, 9);
     expect(value('x = 4', 'y = 7', 'x + y =').value).toBe(11);
+  });
+
+  it('takes a "sum" that ends in dx for the integral it was', () => {
+    // What the model made of a handwritten integral from 0 to infinity: the sign read as a sum.
+    expect(repairReading('\\sum _ { i } ^ { \\infty } x ^ { 2 } d x')).toBe('\\int _ { i } ^ { \\infty } x ^ { 2 } d x');
+    expect(repairReading('\\sum_0^1 x^2 dx =')).toBe('\\int_0^1 x^2 dx =');
+    expect(repairReading('\\sum x \\mathrm{d}x')).toBe('\\int x \\mathrm{d}x');
+    expect(repairReading('2 + \\sum_{0}^{\\pi} \\sin \\theta d\\theta')).toBe('2 + \\int_{0}^{\\pi} \\sin \\theta d\\theta');
+    expect(value(repairReading('\\sum _ { 0 } ^ { 1 } x ^ { 2 } d x =')).value).toBeCloseTo(1 / 3, 9);
+    // Real sums are left alone: one with a counter beneath it, or one whose term does not end in dx.
+    for (const sum of ['\\sum_{n=1}^{100} n', '\\sum_{d=1}^{3} d x', '\\sum_i^{\\infty} x^2', '\\sum_{k=1}^{4} k d', 'y = \\sum_i x_i', '\\sum_i a_i = d x']) {
+      expect(repairReading(sum)).toBe(sum);
+    }
   });
 
   it('works out sums, products and definite integrals', () => {
