@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MathReadError, parseLatex, toMathText } from './latexMath';
+import { MathReadError, parseLatex, repairReading, toMathText } from './latexMath';
 import { simulate } from './ode';
 import { evaluateNotebook } from './scratch';
 
@@ -17,6 +17,32 @@ describe('reading LaTeX', () => {
     expect(text('e^{-t/\\tau}')).toBe('e^(-t / tau)');
     expect(text('2^{3^2}')).toBe('2^3^2');
     expect(text('\\left(x+1\\right)^{2}')).toBe('(x + 1)^2');
+  });
+
+  it('reads digits a recogniser wrote apart as one number', () => {
+    // Spaces mean nothing inside a number in LaTeX, and recognisers emit one digit at a time.
+    // Read as separate numbers they were multiplied: the square root of 14 came out as 2.
+    expect(text('\\sqrt { 1 4 }')).toBe('sqrt(14)');
+    expect(text('\\frac { 7 } { 1 2 }')).toBe('7 / 12');
+    expect(text('1 2 + 7')).toBe('12 + 7');
+    expect(text('3 . 1 4 x')).toBe('3.14 * x');
+    expect(text('x ^ { 1 0 }')).toBe('x^10');
+    // An unbraced fraction still takes one digit for each part.
+    expect(text('\\frac 1 2')).toBe('1 / 2');
+    // Numbers that really are separate stay separate.
+    expect(text('2 \\times 3')).toBe('2 * 3');
+    expect(text('2 x 3')).toBe('2 * x * 3');
+  });
+
+  it('accepts other spellings of the commands it knows', () => {
+    expect(() => parseLatex('\\sum_{n=1}^{\\infin} n')).not.toThrow(/infin/);
+    for (const arrow of ['\\rarr', '\\rightarrow', '\\longrightarrow']) {
+      let message = '';
+      try { parseLatex(`x ${arrow} 2`); } catch (err) { message = err instanceof Error ? err.message : String(err); }
+      // Whatever it makes of an arrow here, it is no longer a word it has never heard of.
+      expect(message).not.toMatch(/rarr|rightarrow/);
+    }
+    expect(text('a \\centerdot b')).toBe('a * b');
   });
 
   it('treats adjacent things as a product', () => {
@@ -130,6 +156,25 @@ describe('the notebook', () => {
   it('defines and uses functions', () => {
     expect(value('f(x) = x^2 + 1', 'f(3) =').value).toBe(10);
     expect(run('f(2) + 1 =', 'f(x) = 3x').lines[0].value).toBe(7); // used above its definition
+  });
+
+  it('gives the right value for what a recogniser reads, digit by digit', () => {
+    expect(value('\\sqrt { 1 4 } =').value).toBeCloseTo(Math.sqrt(14), 9);
+    expect(value('\\frac { 7 } { 1 2 } =').value).toBeCloseTo(7 / 12, 9);
+    expect(value('x = 4', 'y = 7', 'x + y =').value).toBe(11);
+  });
+
+  it('takes a "sum" that ends in dx for the integral it was', () => {
+    // What the model made of a handwritten integral from 0 to infinity: the sign read as a sum.
+    expect(repairReading('\\sum _ { i } ^ { \\infty } x ^ { 2 } d x')).toBe('\\int _ { i } ^ { \\infty } x ^ { 2 } d x');
+    expect(repairReading('\\sum_0^1 x^2 dx =')).toBe('\\int_0^1 x^2 dx =');
+    expect(repairReading('\\sum x \\mathrm{d}x')).toBe('\\int x \\mathrm{d}x');
+    expect(repairReading('2 + \\sum_{0}^{\\pi} \\sin \\theta d\\theta')).toBe('2 + \\int_{0}^{\\pi} \\sin \\theta d\\theta');
+    expect(value(repairReading('\\sum _ { 0 } ^ { 1 } x ^ { 2 } d x =')).value).toBeCloseTo(1 / 3, 9);
+    // Real sums are left alone: one with a counter beneath it, or one whose term does not end in dx.
+    for (const sum of ['\\sum_{n=1}^{100} n', '\\sum_{d=1}^{3} d x', '\\sum_i^{\\infty} x^2', '\\sum_{k=1}^{4} k d', 'y = \\sum_i x_i', '\\sum_i a_i = d x']) {
+      expect(repairReading(sum)).toBe(sum);
+    }
   });
 
   it('works out sums, products and definite integrals', () => {

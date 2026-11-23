@@ -7,6 +7,8 @@ export type Tool = 'pen' | 'rubber';
 
 const RULE = 44;
 const RUBBER = 9;
+/** For this long after the pen was last seen, a touch is taken to be the writing hand's palm (milliseconds). */
+const PALM_MS = 1200;
 
 interface Props {
   strokes: Stroke[];
@@ -112,9 +114,23 @@ export function InkCanvas({ strokes, tool, fingerDraws, scrollY, onScroll, onPen
   const rub = (x: number, y: number) => useScratch.getState().erase(strokesNear(page.current, x, y, RUBBER));
   const fingerMid = () => { let s = 0; fingers.current.forEach((y) => { s += y; }); return s / Math.max(1, fingers.current.size); };
 
+  // When the pen was last on or near the page. A hand resting beside it is a palm, not a finger gesture.
+  const penAt = useRef(-Infinity);
+  const penNear = () => performance.now() - penAt.current < PALM_MS;
+
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType === 'pen') {
+      penAt.current = performance.now();
+      onPen();
+      // The palm usually lands before the nib. Whatever a touch had begun gives way to the pen;
+      // without this the palm's "stroke" held the page and the pen was ignored altogether.
+      if (active.current?.touch) { active.current = null; clearLive(); }
+      panning.current = false;
+    }
     if (e.pointerType === 'touch') {
+      // A touch while the pen is writing or hovering is the writing hand. It neither draws nor scrolls.
+      if (penNear()) return;
       fingers.current.set(e.pointerId, e.clientY);
       const penBusy = active.current && !active.current.touch;
       if (!fingerDraws || fingers.current.size >= 2 || penBusy) {
@@ -125,7 +141,6 @@ export function InkCanvas({ strokes, tool, fingerDraws, scrollY, onScroll, onPen
       }
     }
     if (active.current) return;
-    if (e.pointerType === 'pen') onPen();
     const { x, y } = at(e);
     // The far end of a stylus, or its barrel button, rubs out.
     const rubber = tool === 'rubber' || e.button === 5 || (e.buttons & 32) !== 0;
@@ -135,6 +150,8 @@ export function InkCanvas({ strokes, tool, fingerDraws, scrollY, onScroll, onPen
   };
 
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // A pen that hovers reports moves before it touches: enough to know a pen is in use.
+    if (e.pointerType === 'pen') { penAt.current = performance.now(); if (!active.current) onPen(); }
     if (e.pointerType === 'touch' && panning.current && fingers.current.has(e.pointerId)) {
       const before = fingerMid();
       fingers.current.set(e.pointerId, e.clientY);
@@ -165,6 +182,7 @@ export function InkCanvas({ strokes, tool, fingerDraws, scrollY, onScroll, onPen
       fingers.current.delete(e.pointerId);
       if (!fingers.current.size) panning.current = false;
     }
+    if (e.pointerType === 'pen') penAt.current = performance.now();
     const a = active.current;
     if (!a || a.pointer !== e.pointerId) return;
     active.current = null;

@@ -86,6 +86,55 @@ type Tok =
   | { t: 'cmd'; v: string }
   | { t: 'op'; v: string };
 
+/**
+ * Put right what a handwriting recogniser commonly gets wrong, where what was
+ * meant is not in doubt. For now one thing: a short integral sign is read as a
+ * sum. A "sum" with no "n = 1" beneath it, whose term ends in dx, is an integral.
+ */
+export function repairReading(latex: string): string {
+  let out = '';
+  let rest = latex;
+  for (;;) {
+    const m = /\\sum(?![A-Za-z])/.exec(rest);
+    if (!m) return out + rest;
+    out += rest.slice(0, m.index);
+    let i = m.index + m[0].length;
+    let lower: string | null = null;
+    // Skip the limits, noting the lower one.
+    for (let n = 0; n < 2; n++) {
+      const lim = /^\s*(?:\\limits\s*)?([_^])\s*/.exec(rest.slice(i));
+      if (!lim) break;
+      i += lim[0].length;
+      const start = i;
+      if (rest[i] === '{') {
+        let depth = 0;
+        do { if (rest[i] === '{') depth++; else if (rest[i] === '}') depth--; i++; } while (depth > 0 && i < rest.length);
+      } else {
+        const one = /^\\[A-Za-z]+|^./.exec(rest.slice(i));
+        i += one ? one[0].length : 0;
+      }
+      if (lim[1] === '_') lower = rest.slice(start, i);
+    }
+    // The term runs to the next "=" outside braces, or to the end.
+    let end = i;
+    for (let depth = 0; end < rest.length; end++) {
+      if (rest[end] === '{') depth++;
+      else if (rest[end] === '}') depth--;
+      else if (rest[end] === '=' && depth === 0) break;
+    }
+    const term = rest.slice(i, end);
+    const endsInDifferential = /(?:^|[^A-Za-z\\])(?:d|\\mathrm\s*\{\s*d\s*\})\s*(?:[A-Za-z]|\\[A-Za-z]+)\s*$/.test(term);
+    const isSeries = lower !== null && lower.includes('=');
+    out += (endsInDifferential && !isSeries ? '\\int' : '\\sum') + rest.slice(m.index + m[0].length, end);
+    rest = rest.slice(end);
+  }
+}
+
+/** Other spellings of commands the scratchpad knows, as recognisers and people write them. */
+const ALIASES: Record<string, string> = {
+  rarr: 'to', rightarrow: 'to', longrightarrow: 'to', infin: 'infty', cfrac: 'frac', centerdot: 'cdot',
+};
+
 function tokenize(src: string): Tok[] {
   const out: Tok[] = [];
   let i = 0;
@@ -93,8 +142,10 @@ function tokenize(src: string): Tok[] {
     const c = src[i];
     if (/\s/.test(c) || c === '$' || c === '&' || c === '~') { i++; continue; }
     if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) {
-      const m = /^(\d+(\.\d+)?|\.\d+)/.exec(src.slice(i))!;
-      out.push({ t: 'num', v: m[0] });
+      // Spaces inside a number mean nothing in LaTeX ("1 2" is twelve), and a recogniser writes each
+      // digit separately. Read as two numbers they would be multiplied: √14 became √(1·4) = 2.
+      const m = /^(\d(\s*\d)*(\s*\.\s*\d(\s*\d)*)?|\.\s*\d(\s*\d)*)/.exec(src.slice(i))!;
+      out.push({ t: 'num', v: m[0].replace(/\s+/g, '') });
       i += m[0].length;
       continue;
     }
@@ -108,7 +159,7 @@ function tokenize(src: string): Tok[] {
           if ((m[1] === 'left' || m[1] === 'right') && src[i] === '.') i++;
           continue;
         }
-        out.push({ t: 'cmd', v: m[1] });
+        out.push({ t: 'cmd', v: ALIASES[m[1]] ?? m[1] });
         continue;
       }
       const next = src[i + 1] ?? '';

@@ -10,6 +10,7 @@
  * With neither, lines are typed in by hand.
  */
 import { readStored, storageKey } from '../core/brand';
+import { repairReading } from '../core/latexMath';
 import type { Stroke } from '../core/ink';
 import { MODEL_SIZE, rasterAsPng, rasterForModel } from './raster';
 import type { WorkerReply, WorkerRequest } from './local.worker';
@@ -49,11 +50,11 @@ export function saveSettings(s: RecognitionSettings): void {
 
 /** What a recogniser said, tidied: spacing commands and aliases that mean nothing to the reader are removed. */
 export function cleanLatex(s: string): string {
-  return s
+  return repairReading(s
     .replace(/\\infin\b/g, '\\infty')
     .replace(/~|\\!|\\,|\\;|\\:|\\quad\b|\\qquad\b/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim());
 }
 
 const base = (): string => new URL('.', document.baseURI).href;

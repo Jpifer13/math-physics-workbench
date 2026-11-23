@@ -19,6 +19,22 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   for you, and explains what each is for. Take it again from Help ▸ Take the
   Tour, or the **?** at the top right.
 
+### Fixed
+
+- **Scratchpad: the Pencil writes when your palm lands first.** Resting your
+  hand on the iPad before the nib touched meant the pen was ignored and only
+  a finger would draw.
+- **Scratchpad: lines stay the lines you wrote.** Two lines written close
+  together, or beside a tall fraction elsewhere on the page, could be joined
+  into one and re-read as nonsense, losing the values they had set. Limits
+  written above and below an integral or sum sign now stay with it.
+- **Scratchpad: numbers of more than one digit.** A handwritten √14 was read
+  correctly and then worked out as 2, and 7/12 as 3.5, because the digits
+  were multiplied together.
+- **Scratchpad: more readings are understood.** `\rarr` and a few other
+  spellings are accepted, and a handwritten integral whose sign was read as
+  a sum is put right when its term ends in dx.
+
 ## [0.2.0] — 2026-11-22
 
 The first release with installers, for Windows, macOS and Linux. They are
