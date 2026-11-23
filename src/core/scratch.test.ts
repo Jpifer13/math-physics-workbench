@@ -19,6 +19,32 @@ describe('reading LaTeX', () => {
     expect(text('\\left(x+1\\right)^{2}')).toBe('(x + 1)^2');
   });
 
+  it('reads digits a recogniser wrote apart as one number', () => {
+    // Spaces mean nothing inside a number in LaTeX, and recognisers emit one digit at a time.
+    // Read as separate numbers they were multiplied: the square root of 14 came out as 2.
+    expect(text('\\sqrt { 1 4 }')).toBe('sqrt(14)');
+    expect(text('\\frac { 7 } { 1 2 }')).toBe('7 / 12');
+    expect(text('1 2 + 7')).toBe('12 + 7');
+    expect(text('3 . 1 4 x')).toBe('3.14 * x');
+    expect(text('x ^ { 1 0 }')).toBe('x^10');
+    // An unbraced fraction still takes one digit for each part.
+    expect(text('\\frac 1 2')).toBe('1 / 2');
+    // Numbers that really are separate stay separate.
+    expect(text('2 \\times 3')).toBe('2 * 3');
+    expect(text('2 x 3')).toBe('2 * x * 3');
+  });
+
+  it('accepts other spellings of the commands it knows', () => {
+    expect(() => parseLatex('\\sum_{n=1}^{\\infin} n')).not.toThrow(/infin/);
+    for (const arrow of ['\\rarr', '\\rightarrow', '\\longrightarrow']) {
+      let message = '';
+      try { parseLatex(`x ${arrow} 2`); } catch (err) { message = err instanceof Error ? err.message : String(err); }
+      // Whatever it makes of an arrow here, it is no longer a word it has never heard of.
+      expect(message).not.toMatch(/rarr|rightarrow/);
+    }
+    expect(text('a \\centerdot b')).toBe('a * b');
+  });
+
   it('treats adjacent things as a product', () => {
     expect(text('2x')).toBe('2 * x');
     expect(text('m c^2')).toBe('m * c^2');
@@ -130,6 +156,12 @@ describe('the notebook', () => {
   it('defines and uses functions', () => {
     expect(value('f(x) = x^2 + 1', 'f(3) =').value).toBe(10);
     expect(run('f(2) + 1 =', 'f(x) = 3x').lines[0].value).toBe(7); // used above its definition
+  });
+
+  it('gives the right value for what a recogniser reads, digit by digit', () => {
+    expect(value('\\sqrt { 1 4 } =').value).toBeCloseTo(Math.sqrt(14), 9);
+    expect(value('\\frac { 7 } { 1 2 } =').value).toBeCloseTo(7 / 12, 9);
+    expect(value('x = 4', 'y = 7', 'x + y =').value).toBe(11);
   });
 
   it('works out sums, products and definite integrals', () => {

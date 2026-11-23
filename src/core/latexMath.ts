@@ -86,6 +86,11 @@ type Tok =
   | { t: 'cmd'; v: string }
   | { t: 'op'; v: string };
 
+/** Other spellings of commands the scratchpad knows, as recognisers and people write them. */
+const ALIASES: Record<string, string> = {
+  rarr: 'to', rightarrow: 'to', longrightarrow: 'to', infin: 'infty', cfrac: 'frac', centerdot: 'cdot',
+};
+
 function tokenize(src: string): Tok[] {
   const out: Tok[] = [];
   let i = 0;
@@ -93,8 +98,10 @@ function tokenize(src: string): Tok[] {
     const c = src[i];
     if (/\s/.test(c) || c === '$' || c === '&' || c === '~') { i++; continue; }
     if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) {
-      const m = /^(\d+(\.\d+)?|\.\d+)/.exec(src.slice(i))!;
-      out.push({ t: 'num', v: m[0] });
+      // Spaces inside a number mean nothing in LaTeX ("1 2" is twelve), and a recogniser writes each
+      // digit separately. Read as two numbers they would be multiplied: √14 became √(1·4) = 2.
+      const m = /^(\d(\s*\d)*(\s*\.\s*\d(\s*\d)*)?|\.\s*\d(\s*\d)*)/.exec(src.slice(i))!;
+      out.push({ t: 'num', v: m[0].replace(/\s+/g, '') });
       i += m[0].length;
       continue;
     }
@@ -108,7 +115,7 @@ function tokenize(src: string): Tok[] {
           if ((m[1] === 'left' || m[1] === 'right') && src[i] === '.') i++;
           continue;
         }
-        out.push({ t: 'cmd', v: m[1] });
+        out.push({ t: 'cmd', v: ALIASES[m[1]] ?? m[1] });
         continue;
       }
       const next = src[i + 1] ?? '';
