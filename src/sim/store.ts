@@ -1,5 +1,6 @@
 import { readStored, storageKey } from '../core/brand';
 import { create } from 'zustand';
+import { normalizeSim } from '../core/docfile';
 import type { OdeModel, SimResult } from '../core/ode';
 import { MODELS } from './models';
 
@@ -35,19 +36,7 @@ export function isModel(v: unknown): v is OdeModel {
 }
 
 /** Fill in anything an older or hand-written file may be missing. */
-export function normalizeModel(m: OdeModel): OdeModel {
-  const b = blankModel();
-  return {
-    ...m,
-    id: m.id ?? 'custom',
-    name: m.name ?? b.name,
-    summary: m.summary ?? '',
-    derived: Array.isArray(m.derived) ? m.derived : [],
-    dt: m.dt > 0 ? m.dt : b.dt,
-    timeSeries: Array.isArray(m.timeSeries) ? m.timeSeries : [m.states[0]?.name].filter(Boolean),
-    phase: Array.isArray(m.phase) ? m.phase : [m.states[0]?.name ?? 't', m.states[1]?.name ?? m.states[0]?.name ?? 't'],
-  };
-}
+export const normalizeModel = normalizeSim;
 
 function restore(): OdeModel {
   try {

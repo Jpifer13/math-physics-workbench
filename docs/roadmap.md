@@ -243,22 +243,26 @@ flows or the math tools; there is no guided tour.
 reused because existing tools are hard to plug into other work.
 *Evidence: [Carver et al.][carver]; indirect.*
 
-**Today.** Everything goes through the window. A parameter study too large for
-the built-in experiment view has no route out.
-
-**Proposal — headless runs (M).** A command-line mode that opens a `.physsim`,
-runs it or its experiment, and writes CSV — so the app can sit inside a
-pipeline, a cluster job or a notebook. The engine in `src/core` is already
-free of UI code, which makes this mostly packaging.
+**Status: done.** A command-line mode runs a saved simulation, its experiment
+or its uncertainty analysis without the window and writes CSV with the usual
+provenance header; `--set` overrides parameters and the experiment's design
+can be given on the command line. `check` runs a model's expectations and
+exits non-zero if one fails, which makes them usable as tests in continuous
+integration. `template` writes any built-in template as a file to start from.
+It runs under Node from a source checkout and from the installed app's own
+executable. **Limits:** runs are sequential on one core; fitting and equation
+flows are not available from the command line.
 
 ---
 
 ## Suggested order for what remains
 
-Done: items 1 to 9 and 11; item 10 mostly.
+Done: items 1 to 9, 11 and 12; item 10 mostly.
 
-1. Item 12, and sub-flows from item 10, as the user base and model sizes
-   grow.
+1. Sub-flows, the remaining part of item 10.
+2. Extras noted under items 7, 10 and 12: Morris screening and correlated
+   inputs; comparing two files; parallel runs and fitting from the command
+   line.
 
 ## Sources
 

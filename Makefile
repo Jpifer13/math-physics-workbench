@@ -10,6 +10,8 @@ NPM ?= npm
 FILE ?=
 # A test file or name filter for `make test`, e.g. make test T=sensitivity
 T ?=
+# Arguments for `make cli`, e.g. make cli ARGS="run model.physsim --out run.csv"
+ARGS ?= --help
 
 # Installs when package-lock.json is newer than the last install.
 node_modules: package-lock.json
@@ -51,6 +53,13 @@ start: build ## Production build, then launch it (FILE=path opens a document)
 .PHONY: web
 web: node_modules ## UI only, in a browser (no file dialogs or external tools)
 	$(NPM) run dev:web
+
+.PHONY: cli
+cli: dist/cli/cli.mjs ## Command-line mode without the window (ARGS="run model.physsim")
+	@node bin/math-physics-workbench.mjs $(ARGS)
+
+dist/cli/cli.mjs: node_modules $(shell find src/core src/cli src/sim/models.ts -name '*.ts' -not -name '*.test.ts' 2>/dev/null) vite.cli.config.ts
+	$(NPM) run -s build:cli
 
 ##@ Check
 
@@ -107,4 +116,4 @@ help: ## Show this list
 	@awk 'BEGIN {FS = ":.*## "} \
 		/^##@ / { printf "\n%s\n", substr($$0, 5); next } \
 		/^[a-zA-Z_-]+:.*## / { printf "  make %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
-	@printf "\nOptions: FILE=path with start, T=name with test and test-watch.\n"
+	@printf "\nOptions: FILE=path with start, T=name with test and test-watch, ARGS=\"...\" with cli.\n"

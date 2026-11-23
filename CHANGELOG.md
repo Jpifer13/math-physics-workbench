@@ -19,6 +19,10 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   a measurement with 68% and 95% intervals, a band around the observable over
   time, and Sobol first-order and total sensitivity indices with intervals.
   The analysis is saved with the simulation and recorded in CSV exports.
+- **Command-line mode.** `run`, `experiment`, `uncertainty`, `check` and
+  `template` work without the window, from a source checkout
+  (`npm run -s cli -- …`, `make cli ARGS="…"`) or from the installed app's
+  executable. `check` exits non-zero when an expectation fails.
 - **Autocomplete in equation fields**: the model's names, then functions.
   Arrow keys choose, Tab or Enter accepts, Escape dismisses.
 - **Functions and syntax reference**, searchable, with a worked example for

@@ -26,12 +26,14 @@ doubled in native menu labels on Windows and Linux (`menuLabel` in
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~205 tests
+npm test             # vitest; ~230 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
 npm run dist         # installer for the current OS
 npm run dev:web      # UI only, in a browser — no file dialogs or external tools
+npm run build:cli    # the command-line mode, bundled to dist/cli/cli.mjs
+npm run -s cli -- check model.physsim   # run it (see README)
 ```
 
 The `Makefile` wraps these (`make` lists the targets). Two are worth knowing:
@@ -74,6 +76,8 @@ src/sim/               Simulations workspace (the main one)
   RunView / ExperimentView / UncertaintyView / FitView / ToolsView   The five views
   compute.ts, worker.ts  Web-worker pool for scans, fits and profiles
   models.ts              Templates
+src/cli/               Command-line mode: cli.ts (text in, text out; tested), main.ts (Node)
+bin/                   Launcher for the built command-line bundle
 src/flow/              Equation Flows workspace (React Flow node editor)
 src/mathtools/         Grapher, 3D surfaces, vector fields, units
 src/integrations/      Code export: python.ts, matlab.ts, mathematica.ts, julia.ts
@@ -122,6 +126,12 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   re-emits expressions from the syntax tree against a whitelist; that is what
   stops a shared model file injecting code into a script that then gets run.
   Keep every new generator on `translate()`.
+- **The command line shares the app's start-up.** `electron/main.cjs` treats a
+  first argument of `run`, `experiment`, `uncertainty`, `check` or `template`
+  as a command, loads `dist/cli/cli.mjs` and exits without opening a window.
+  A new command goes in `src/cli/cli.ts` *and* in `CLI_COMMANDS` there.
+  `npm run build` builds both bundles; `vite build` alone empties `dist/` and
+  so removes the command-line one.
 - **External programs** are started by `electron/main.cjs` with `execFile`
   (no shell) from a fixed table. Adding one means an entry there plus a
   generator; see "Adding another target" in `docs/integrations.md`.
@@ -176,7 +186,7 @@ Done and verified: the three workspaces, four solvers with events, experiments
 (1-D and 2-D), uncertainty propagation and Sobol sensitivity, fitting with
 uncertainties, ties, profiles and bootstrap, figure export (SVG, PNG, PDF),
 diff-friendly files and compare-with-file, the model check, function
-reference and autocomplete, accuracy checks, expectations, provenance, unit
+reference and autocomplete, the command-line mode, accuracy checks, expectations, provenance, unit
 checking, undo/redo, code export, running in external tools, the desktop
 shell, and Linux packaging.
 
@@ -204,8 +214,7 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 **Next, in roadmap order** (`docs/roadmap.md` has the evidence and detail):
 1. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
    inputs; feeding fitted uncertainties in as the input spread.
-2. Item 12 — a command-line mode.
-3. Rest of item 10 — sub-flows.
+2. Rest of item 10 — sub-flows.
 
 Known rough edges: `npm audit` reports a moderate advisory in the installer
 build tool (dev-only; the automatic fix is a breaking downgrade); there is no

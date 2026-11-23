@@ -418,7 +418,22 @@ function createWindow() {
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
-if (!app.requestSingleInstanceLock()) {
+// Command-line mode: `<app> run model.physsim` and the like do their work without a window and exit.
+// The commands live in the same bundle that `npm run cli` uses (src/cli); a document path is not a command.
+const cliArgs = process.argv.slice(app.isPackaged ? 1 : 2).filter((a) => !a.startsWith('--user-data-dir') && !a.startsWith('--no-sandbox'));
+const CLI_COMMANDS = ['run', 'experiment', 'uncertainty', 'check', 'template', 'help', '--help', '--version'];
+
+if (CLI_COMMANDS.includes(cliArgs[0])) {
+  app.dock?.hide();
+  const bundle = path.join(__dirname, '..', 'dist', 'cli', 'cli.mjs');
+  import(require('node:url').pathToFileURL(bundle).href).then(
+    (cli) => app.exit(cli.main(cliArgs)),
+    (err) => {
+      process.stderr.write(`The command-line mode could not start: ${err && err.message ? err.message : err}\n`);
+      app.exit(1);
+    },
+  );
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {

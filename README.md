@@ -186,6 +186,41 @@ every target.
 The tests that check exported scripts run only where the relevant program is
 installed (Python with SciPy, GNU Octave) and skip themselves elsewhere.
 
+### From the command line
+
+The same engine runs without the window, so a simulation can sit inside a
+script, a pipeline or a cluster job. Results are CSV with the same provenance
+header the app writes.
+
+```bash
+npm run build:cli                       # once; `make cli` does it for you
+
+npm run -s cli -- template                         # list the built-in templates
+npm run -s cli -- template pendulum --out p.physsim
+npm run -s cli -- run p.physsim --out run.csv      # time, every state, every observable
+npm run -s cli -- run p.physsim --set g=1.62       # override a parameter
+npm run -s cli -- experiment p.physsim             # the experiment saved in the file
+npm run -s cli -- experiment p.physsim --param L --from 0.5 --to 2 --points 20 --measure period --observable theta
+npm run -s cli -- uncertainty p.physsim            # the saved uncertainty analysis
+npm run -s cli -- check p.physsim                  # exits 1 if an expectation fails
+```
+
+`check` runs the model, tests its expectations and prints the model check; its
+exit code makes a model's expectations usable as tests in continuous
+integration. Results go to standard output and messages to standard error, so
+`... run p.physsim > run.csv` works. Exit codes: 0 done, 1 the model failed or
+an expectation does not hold, 2 the command was not understood.
+
+The installed app accepts the same commands in place of a document to open,
+for example on macOS:
+
+```bash
+"/Applications/Math & Physics Workbench.app/Contents/MacOS/Math & Physics Workbench" check p.physsim
+```
+
+Runs are made one after another on one core; for a very large study, split it
+across several invocations with different `--set` values or seeds.
+
 ### Building an installer
 
 ```bash

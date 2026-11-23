@@ -119,6 +119,20 @@ export function readDocument(text: string, currentFormat: number): ReadResult {
   return { kind: 'unknown' };
 }
 
+/** Fill in anything an older or hand-written simulation file may be missing. */
+export function normalizeSim(m: OdeModel): OdeModel {
+  return {
+    ...m,
+    id: m.id ?? 'custom',
+    name: m.name ?? 'Untitled simulation',
+    summary: m.summary ?? '',
+    derived: Array.isArray(m.derived) ? m.derived : [],
+    dt: m.dt > 0 ? m.dt : 0.01,
+    timeSeries: Array.isArray(m.timeSeries) ? m.timeSeries : [m.states[0]?.name].filter(Boolean),
+    phase: Array.isArray(m.phase) ? m.phase : [m.states[0]?.name ?? 't', m.states[1]?.name ?? m.states[0]?.name ?? 't'],
+  };
+}
+
 // ---------------------------------------------------------------- comparing
 
 export interface Change {
