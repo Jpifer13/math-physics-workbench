@@ -1,3 +1,4 @@
+import { CALCULUS, type CalculusData, type CalculusOp } from '../core/calculus';
 import { useContext } from 'react';
 import {
   getOp, inputPorts, nodeLabel, OPS, type ConstantData, type FormulaData, type GroupData, type OpData, type OutputData, type QuantityData,
@@ -59,7 +60,7 @@ export function Inspector() {
   return (
     <aside className="inspector">
       <div className="panel-title">
-        {kind === 'quantity' ? 'Input' : kind === 'constant' ? 'Constant' : kind === 'op' ? 'Operation' : kind === 'formula' ? 'Formula' : kind === 'group' ? 'Group' : 'Output'}
+        {kind === 'quantity' ? 'Input' : kind === 'constant' ? 'Constant' : kind === 'op' ? 'Operation' : kind === 'formula' ? 'Formula' : kind === 'calculus' ? (CALCULUS[(cfg as CalculusData).op]?.label ?? 'Calculus') : kind === 'group' ? 'Group' : 'Output'}
         <span className="panel-actions">
           <button className="btn small" onClick={() => duplicate(node.id)} title="A second copy of this block beside it">Duplicate</button>
           <button className="btn danger small" onClick={() => removeNode(node.id)}>Delete</button>
@@ -123,6 +124,30 @@ export function Inspector() {
             <p className="muted">Inputs: {inputPorts({ kind, data: cfg }).join(', ')}</p>
           </>
         )}
+
+        {kind === 'calculus' && (() => {
+          const c = cfg as CalculusData;
+          const def = CALCULUS[c.op];
+          const counted = c.op === 'sum' || c.op === 'product';
+          return (
+            <>
+              <Field label="Name"><input value={c.label} onChange={(e) => set({ label: e.target.value })} /></Field>
+              <Field label="Kind">
+                <select value={c.op} onChange={(e) => set({ op: e.target.value as CalculusOp })}>
+                  {(Object.keys(CALCULUS) as CalculusOp[]).map((op) => <option key={op} value={op}>{CALCULUS[op].label}</option>)}
+                </select>
+              </Field>
+              <Field label="Expression" hint="Written like a Formula block. Every name other than the variable becomes an input port.">
+                <textarea className="code" rows={3} spellCheck={false} value={c.expr} onChange={(e) => set({ expr: e.target.value })} />
+              </Field>
+              <Field label={counted ? 'Counter' : 'Variable'} hint={counted ? 'Runs through the whole numbers from “from” to “to”.' : c.op === 'integral' ? 'Runs from “from” to “to”, and has their units.' : 'Takes the value wired to “at”, and has its units.'}>
+                <input className="code" value={c.variable} spellCheck={false} autoCapitalize="off" onChange={(e) => set({ variable: e.target.value })} />
+              </Field>
+              <p className="muted">{def?.hint}</p>
+              <p className="muted">Input ports: {inputPorts({ kind, data: cfg }).join(', ')}</p>
+            </>
+          );
+        })()}
 
         {kind === 'formula' && (
           <>

@@ -8,7 +8,9 @@ export type Ex =
   | { t: 'num'; v: number }
   | { t: 'bin'; op: '+' | '-' | '*' | '/' | '^'; a: Ex; b: Ex }
   | { t: 'neg'; a: Ex }
-  | { t: 'fn'; name: string; args: Ex[] };
+  | { t: 'fn'; name: string; args: Ex[] }
+  /** An integral, sum, product, derivative or limit of `body` in the variable `name`. */
+  | { t: 'big'; op: 'integral' | 'sum' | 'product' | 'derivative' | 'limit'; body: Ex; latex: string; name: string; lo?: Ex; hi?: Ex; at?: Ex };
 
 export const sym = (latex: string, val?: string, name?: string, si?: number, unit?: string): Ex => ({ t: 'sym', latex, val, name, si, unit });
 export const num = (v: number): Ex => ({ t: 'num', v });
@@ -36,7 +38,7 @@ export function symbolToLatex(s: string): string {
 }
 
 const PREC: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2, '^': 4 };
-const precOf = (e: Ex): number => (e.t === 'bin' ? PREC[e.op] : e.t === 'neg' ? 3 : 9);
+const precOf = (e: Ex): number => (e.t === 'bin' ? PREC[e.op] : e.t === 'neg' ? 3 : e.t === 'big' ? 1 : 9);
 
 const FN_LATEX: Record<string, string> = {
   sin: '\\sin', cos: '\\cos', tan: '\\tan', asin: '\\arcsin', acos: '\\arccos', atan: '\\arctan',
@@ -72,6 +74,18 @@ export function toLatex(e: Ex, opts: LatexOpts = {}): string {
       return fmtNumber(e.v);
     case 'neg':
       return `-${wrap(e.a, 3)}`;
+    case 'big': {
+      const body = toLatex(e.body, opts);
+      const inner = precOf(e.body) < 2 ? `\\left(${body}\\right)` : body;
+      const lo = e.lo ? toLatex(e.lo, opts) : '';
+      const hi = e.hi ? toLatex(e.hi, opts) : '';
+      const at = e.at ? toLatex(e.at, opts) : '';
+      if (e.op === 'integral') return `\\int_{${lo}}^{${hi}} ${inner}\\,\\mathrm{d}${e.latex}`;
+      if (e.op === 'sum') return `\\sum_{${e.latex}=${lo}}^{${hi}} ${inner}`;
+      if (e.op === 'product') return `\\prod_{${e.latex}=${lo}}^{${hi}} ${inner}`;
+      if (e.op === 'derivative') return `\\left.\\frac{\\mathrm{d}}{\\mathrm{d}${e.latex}}\\left(${body}\\right)\\right|_{${e.latex}=${at}}`;
+      return `\\lim_{${e.latex}\\to ${at}} ${inner}`;
+    }
     case 'fn': {
       if (e.name === 'sqrt') return `\\sqrt{${toLatex(e.args[0], opts)}}`;
       if (e.name === 'cbrt') return `\\sqrt[3]{${toLatex(e.args[0], opts)}}`;
@@ -121,6 +135,8 @@ export function toText(e: Ex): string {
       return `-${wrap(e.a, 3)}`;
     case 'fn':
       return `${e.name === 'ln' ? 'log' : e.name}(${e.args.map(toText).join(', ')})`;
+    case 'big':
+      return `${e.op}(${[toText(e.body), e.name, ...[e.lo, e.hi, e.at].filter((x): x is Ex => !!x).map(toText)].join(', ')})`;
     case 'bin':
       if (e.op === '^') return `${wrap(e.a, 5)}^${wrap(e.b, 5)}`;
       if (e.op === '+') return `${wrap(e.a, 1)} + ${wrap(e.b, 1)}`;
@@ -128,6 +144,15 @@ export function toText(e: Ex): string {
       if (e.op === '*') return `${wrap(e.a, 2)} * ${wrap(e.b, 2)}`;
       return `${wrap(e.a, 2)} / ${wrap(e.b, 3)}`;
   }
+}
+
+/** Whether an expression contains an integral, sum, product, derivative or limit. */
+export function hasCalculus(e: Ex): boolean {
+  if (e.t === 'big') return true;
+  if (e.t === 'bin') return hasCalculus(e.a) || hasCalculus(e.b);
+  if (e.t === 'neg') return hasCalculus(e.a);
+  if (e.t === 'fn') return e.args.some(hasCalculus);
+  return false;
 }
 
 /** Every distinct named symbol in an expression, in order of first appearance. */
@@ -138,6 +163,11 @@ export function symbolsOf(e: Ex): Extract<Ex, { t: 'sym' }>[] {
     else if (x.t === 'bin') { walk(x.a); walk(x.b); }
     else if (x.t === 'neg') walk(x.a);
     else if (x.t === 'fn') x.args.forEach(walk);
+    else if (x.t === 'big') {
+      // The block's own variable is not a symbol of the flow.
+      for (const s of symbolsOf(x.body)) if (s.name !== x.name && !out.some((o) => o.name === s.name)) out.push(s);
+      for (const part of [x.lo, x.hi, x.at]) if (part) walk(part);
+    }
   };
   walk(e);
   return out;

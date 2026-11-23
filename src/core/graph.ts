@@ -4,11 +4,13 @@
  * expression. The React Flow canvas is just one view of this.
  */
 import { bin, fn, neg, num, sym, symbolToLatex, type Ex } from './expr';
+import { calculusPorts, evalCalculus, type CalculusData } from './calculus';
 import { evalFormula, formulaInputs, type Val } from './formula';
 import * as Q from './qmath';
 import { fmtNumLatex, fromUnit, getConstant, getUnit, siUnitFor, unitLatex, type Quantity } from './units';
 
-export type NodeKind = 'quantity' | 'constant' | 'op' | 'formula' | 'output' | 'group';
+export type NodeKind = 'quantity' | 'constant' | 'op' | 'formula' | 'calculus' | 'output' | 'group';
+export type { CalculusData } from './calculus';
 
 export interface QuantityData { label: string; symbol: string; value: number; unit: string; min?: number; max?: number }
 export interface ConstantData { constId: string }
@@ -35,7 +37,7 @@ export interface GroupData {
 export interface GNode {
   id: string;
   kind: NodeKind;
-  data: QuantityData | ConstantData | OpData | FormulaData | OutputData | GroupData;
+  data: QuantityData | ConstantData | OpData | FormulaData | CalculusData | OutputData | GroupData;
 }
 export interface GEdge {
   source: string;
@@ -105,6 +107,8 @@ export function inputPorts(node: Pick<GNode, 'kind' | 'data'>): string[] {
       return getOp((node.data as OpData).op)?.inputs ?? [];
     case 'formula':
       return formulaInputs((node.data as FormulaData).expr);
+    case 'calculus':
+      return calculusPorts(node.data as CalculusData);
     case 'output':
       return ['in'];
     case 'group':
@@ -315,6 +319,8 @@ export function evaluate(original: Graph, opts: EvalOptions = {}): Map<string, N
         for (const p of formulaInputs(d.expr)) scope[p] = input(node, p);
         return evalFormula(d.expr, scope);
       }
+      case 'calculus':
+        return evalCalculus(node.data as CalculusData, (port) => input(node, port));
       case 'output':
         return input(node, 'in');
       case 'group':
