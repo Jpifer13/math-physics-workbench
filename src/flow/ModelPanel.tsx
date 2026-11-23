@@ -1,6 +1,6 @@
 import { provenanceTitle } from '../core/brand';
 import { useContext, useMemo, useState } from 'react';
-import { toLatex, toText } from '../core/expr';
+import { hasCalculus, toLatex, toText } from '../core/expr';
 import { toCsv } from '../core/measure';
 import { exportCsv } from '../documents';
 import { linspace, sweep, sweep2D, upstreamOf, type OutputData, type QuantityData } from '../core/graph';
@@ -138,7 +138,12 @@ export function ModelPanel() {
               <button className="btn small" title="Plain-text expression, ready to paste into a simulation equation or a Formula block" onClick={() => void copy(toText(result.ex!), 'Expression')}>Copy expression</button>
               <button className="btn small" onClick={() => void copy(`${symTex} = ${toLatex(result.ex!)}`, 'LaTeX')}>Copy LaTeX</button>
               <button
-                className="btn small" title="Add this formula to the open simulation as an observable; its inputs become parameters in SI units"
+                className="btn small"
+                // A simulation's equations are worked out at every step and have no integrals, sums or limits in them.
+                disabled={hasCalculus(result.ex!)}
+                title={hasCalculus(result.ex!)
+                  ? 'This formula contains an integral, sum, product, derivative or limit, which a simulation equation cannot hold'
+                  : 'Add this formula to the open simulation as an observable; its inputs become parameters in SI units'}
                 onClick={() => {
                   const tr = addFlowToSimulation(result.ex!, outCfg?.symbol || outCfg?.label || 'result', formatQuantity(result.q!).unit);
                   setSent(`${tr.replaced ? 'Updated' : 'Added'} observable “${tr.observable}” in “${useSim.getState().model.name}”${tr.added.length ? `, with new parameter${tr.added.length > 1 ? 's' : ''} ${tr.added.join(', ')}` : ''}${tr.reused.length ? `; uses its existing ${tr.reused.join(', ')}` : ''}.`);

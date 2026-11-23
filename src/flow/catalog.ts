@@ -1,4 +1,5 @@
 /** Everything that can be dragged from the palette onto the canvas. */
+import { CALCULUS, type CalculusOp } from '../core/calculus';
 import { OPS, type NodeKind } from '../core/graph';
 import { CONSTANTS } from '../core/units';
 import type { Cfg } from './types';
@@ -19,7 +20,7 @@ export interface PaletteGroup {
 export type Tone = 'input' | 'constant' | 'op' | 'formula' | 'output' | 'group';
 
 export const toneOf = (kind: NodeKind): Tone =>
-  kind === 'quantity' ? 'input' : kind === 'constant' ? 'constant' : kind === 'op' ? 'op' : kind === 'formula' ? 'formula' : kind === 'group' ? 'group' : 'output';
+  kind === 'quantity' ? 'input' : kind === 'constant' ? 'constant' : kind === 'op' ? 'op' : kind === 'formula' || kind === 'calculus' ? 'formula' : kind === 'group' ? 'group' : 'output';
 
 const quantity = (label: string, symbol: string, value: number, unit: string, glyph = symbol): PaletteItem => ({
   key: `q-${label}`, kind: 'quantity', cfg: { label, symbol, value, unit }, title: label, glyph,
@@ -68,6 +69,14 @@ export const PALETTE: PaletteGroup[] = [
       key: `op-${o.id}`, kind: 'op' as const, cfg: { op: o.id }, title: o.label, glyph: o.glyph, hint: o.hint,
     })),
   })),
+  {
+    title: 'Calculus',
+    tone: 'formula' as const,
+    items: (Object.keys(CALCULUS) as CalculusOp[]).map((op) => ({
+      key: `calc-${op}`, kind: 'calculus' as const, cfg: { label: CALCULUS[op].label, op, ...CALCULUS[op].example }, title: CALCULUS[op].label, glyph: CALCULUS[op].glyph,
+      hint: CALCULUS[op].hint,
+    })),
+  },
   {
     title: 'Advanced',
     tone: 'formula',

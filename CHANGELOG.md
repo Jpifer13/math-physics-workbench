@@ -19,6 +19,13 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   for you, and explains what each is for. Take it again from Help ▸ Take the
   Tour, or the **?** at the top right.
 
+- **Calculus blocks in Equation Flows.** A new Calculus group in the
+  building blocks has Integral, Sum, Product, Derivative and Limit. Each
+  takes an expression in a variable of its own; its limits (or the point)
+  are input ports, and so is every other name in the expression. Units are
+  carried through, so a force integrated over a distance is an energy. The
+  composed equation shows the integral or sum as written, and a new example,
+  "Work done stretching a spring", shows one in use.
 - **A dark appearance.** The app follows the device's light or dark setting,
   or you can choose one: the button at the top right steps through Auto,
   Light and Dark, and the desktop app also has View ▸ Appearance. Charts,
@@ -29,6 +36,12 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   model, on the device. The model supplies the layout and Greek letters, the
   system recogniser the digits, which the model often gets wrong. Where the
   two disagree, the reading not chosen is offered under the line to tap.
+
+### Changed
+
+- **File format 5.** A flow that uses a calculus block is saved in format 5,
+  which earlier versions decline to open rather than misread. Existing
+  `.physsim` and `.physflow` files open as before.
 
 ### Fixed
 

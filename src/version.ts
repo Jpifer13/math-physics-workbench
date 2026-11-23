@@ -8,4 +8,4 @@ export const WEB_BUILD: boolean = typeof __WEB_BUILD__ === 'boolean' ? __WEB_BUI
 export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
 
 /** Version of the .physsim / .physflow file format. Raise it, and add a migration, when the format changes. */
-export const FILE_FORMAT = 4;
+export const FILE_FORMAT = 5;

@@ -90,6 +90,19 @@ export const EXAMPLES: FlowDoc[] = [
     { outputId: 'T', xId: 'L', min: 0.05, max: 5 },
   ),
   flow(
+    'Work done stretching a spring',
+    'W = ∫ k x dx from 0 to d, with an Integral block from the Calculus group. The block takes its limits as inputs and any other name in its expression (here k) as a port; force integrated over distance comes out as energy.',
+    [
+      ['k', 'quantity', q('Spring constant', 'k', 200, 'N/m'), 0, 0],
+      ['zero', 'quantity', q('Start', 'x_0', 0, 'm'), 0, 1.3],
+      ['d', 'quantity', q('Stretch', 'd', 0.1, 'm'), 0, 2.6],
+      ['int', 'calculus', { label: 'Work', op: 'integral', expr: 'k * x', variable: 'x' }, 1.2, 1],
+      ['W', 'output', out('Work done', 'W', 'J'), 2.4, 1.2],
+    ],
+    [['zero', 'int', 'from'], ['d', 'int', 'to'], ['k', 'int', 'k'], ['int', 'W', 'in']],
+    { outputId: 'W', xId: 'd', min: 0, max: 0.5 },
+  ),
+  flow(
     'Projectile range',
     'R = v₀² sin(2θ) / g, written with a Formula node — type any expression and it grows an input port per variable. The range peaks at 45°.',
     [

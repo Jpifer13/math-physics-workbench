@@ -1,3 +1,4 @@
+import { CALCULUS, type CalculusData } from '../core/calculus';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { createContext, memo, useContext, useEffect } from 'react';
 import {
@@ -44,6 +45,10 @@ function header(node: FNode['data']): { glyph: string; title: string; caption: s
     }
     case 'formula':
       return { glyph: 'ƒ', title: (node.cfg as FormulaData).label, caption: 'Formula' };
+    case 'calculus': {
+      const c = node.cfg as CalculusData;
+      return { glyph: CALCULUS[c.op]?.glyph ?? '?', title: c.label, caption: CALCULUS[c.op]?.label ?? 'Calculus' };
+    }
     case 'output':
       return { glyph: '=', title: (node.cfg as OutputData).label, caption: 'Output' };
     case 'group': {
@@ -84,6 +89,12 @@ export const PhysNode = memo(function PhysNode({ id, data, selected }: NodeProps
           <span className="pnode-sym"><Tex tex={`${symbolTex} =`} /></span>
           <NumberField className="pnode-input" value={(data.cfg as QuantityData).value} onChange={(value) => updateCfg(id, { value })} />
           <UnitSelect className="pnode-unit" value={(data.cfg as QuantityData).unit} onChange={(unit) => updateCfg(id, { unit })} />
+        </div>
+      )}
+
+      {data.kind === 'calculus' && (
+        <div className="pnode-body">
+          <code className="pnode-expr">{(data.cfg as CalculusData).expr || '…'}</code>
         </div>
       )}
 

@@ -90,7 +90,8 @@ export type ReadResult =
  * (nothing to convert). 2 → 3 moved flow block positions into `layout` and
  * flattened each block to { id, kind, cfg }; both shapes are read. 3 → 4
  * added the group block to flows (nothing to convert; a version that does not
- * know groups must not open such a file, hence the bump).
+ * know groups must not open such a file, hence the bump). 4 → 5 added the
+ * calculus block to flows, in the same way.
  */
 export function readDocument(text: string, currentFormat: number): ReadResult {
   let data: Record<string, unknown>;
