@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Tex } from '../components/Tex';
+import { combineReadings, namesIn } from '../core/combine';
 import { groupLines, type InkLine } from '../core/ink';
 import { evaluateNotebook, type LineResult } from '../core/scratch';
 import { openGeneratedModel } from '../documents';
 import {
-  deviceModelInstalled, deviceState, loadSettings, onDeviceState, readLine, saveSettings, startDeviceModel,
+  cleanLatex, deviceModelInstalled, deviceState, loadSettings, onDeviceState, readLine, saveSettings, startDeviceModel,
   type DeviceState, type RecognitionSettings,
 } from '../recognize';
+import { readStrokesAsText } from '../recognize/apple';
 import { InkCanvas, type Tool } from './InkCanvas';
 import { useScratch } from './store';
 
@@ -65,8 +67,16 @@ export function Scratchpad() {
       const byId = new Map(strokes.map((s) => [s.id, s]));
       for (const line of todo) {
         setReading(line.key, { pending: true });
-        readLine(line.ids.map((id) => byId.get(id)!), settings).then(
-          (latex) => setReading(line.key, latex ? { latex } : { error: 'Nothing could be read from this line.' }),
+        const ink = line.ids.map((id) => byId.get(id)!);
+        // What the rest of the page already uses: a letter in use there is not readily taken for a digit.
+        const known = namesIn(lines.filter((l) => l.key !== line.key).map((l) => typed[l.key] ?? readings[l.key]?.latex ?? ''));
+        // On an iPad the system's recogniser reads the strokes as well, and the two readings are combined.
+        const both = reading === 'device' ? readStrokesAsText(ink) : Promise.resolve('');
+        Promise.all([readLine(ink, settings), both]).then(
+          ([model, text]) => {
+            const { latex, other } = combineReadings(model, text, known);
+            setReading(line.key, latex ? { latex: cleanLatex(latex), other } : { error: 'Nothing could be read from this line.' });
+          },
           (err: unknown) => setReading(line.key, { error: err instanceof Error ? err.message : 'This line could not be read.' }),
         );
       }
@@ -193,7 +203,7 @@ interface RowProps {
   index: number;
   source: string;
   result: LineResult | undefined;
-  reading: { latex?: string; error?: string; pending?: boolean } | undefined;
+  reading: { latex?: string; other?: string; error?: string; pending?: boolean } | undefined;
   isTyped: boolean;
   canRead: boolean;
   editing: boolean;
@@ -229,6 +239,12 @@ function LineRow({ index, source, result, reading, isTyped, canRead, editing, on
                 : <Tex tex={source} />}
               <button className="link" onClick={() => onEdit(true)}>{unread ? 'Type it' : 'Correct'}</button>
             </div>
+            {!unread && !isTyped && reading?.other && (
+              <div className="scratch-other">
+                <span className="muted">Or did you write</span>
+                <button className="btn small" onClick={() => onType(reading.other!)} title="Use this reading instead"><Tex tex={reading.other} /></button>
+              </div>
+            )}
             {!unread && result?.tex && <div className={`scratch-result ${result.kind}`}><Tex tex={result.tex} /></div>}
             {!unread && result?.message && <div className={`scratch-note ${result.kind === 'error' || result.kind === 'waiting' ? 'attention' : ''}`}>{result.message}</div>}
           </>
