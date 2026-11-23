@@ -4,6 +4,7 @@
  * builds its own figure; the buttons, the size settings and the file formats
  * are shared here.
  */
+import { forceLight } from '../theme';
 import { readStored, storageKey } from '../core/brand';
 import { useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
@@ -95,6 +96,16 @@ function blank(width: number, height: number): SVGSVGElement {
  */
 export function standaloneSvg(svg: SVGSVGElement, o: { legend?: LegendEntry[]; underlay?: Underlay } = {}): { root: SVGSVGElement; width: number; height: number } {
   const legend = o.legend ?? [];
+  // A saved figure is the light one, on white, whatever appearance is on screen.
+  const restore = forceLight();
+  try {
+    return build(svg, legend, o.underlay);
+  } finally {
+    restore();
+  }
+}
+
+function build(svg: SVGSVGElement, legend: LegendEntry[], underlay: Underlay | undefined): { root: SVGSVGElement; width: number; height: number } {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   const from = [svg, ...svg.querySelectorAll('*')];
   const to = [clone, ...clone.querySelectorAll('*')];
@@ -135,7 +146,7 @@ export function standaloneSvg(svg: SVGSVGElement, o: { legend?: LegendEntry[]; u
   }
   const g = document.createElementNS(NS, 'g');
   g.setAttribute('transform', `translate(0 ${top})`);
-  if (o.underlay) g.appendChild(image(o.underlay));
+  if (underlay) g.appendChild(image(underlay));
   while (clone.firstChild) g.appendChild(clone.firstChild);
   root.appendChild(g);
   return { root, width, height };

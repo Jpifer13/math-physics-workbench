@@ -3,7 +3,7 @@
  * The UI (renderer) is sandboxed and can only reach the disk through the
  * narrow, dialog-gated API exposed in preload.cjs.
  */
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -85,6 +85,10 @@ function deliverFile(filePath) {
 }
 
 const docArg = (argv) => argv.slice(1).find((a) => /\.(physsim|physflow|json)$/i.test(a) && fs.existsSync(a));
+
+ipcMain.on('theme:set', (_e, choice) => {
+  if (choice === 'system' || choice === 'light' || choice === 'dark') nativeTheme.themeSource = choice;
+});
 
 ipcMain.handle('doc:open', async () => {
   const r = await dialog.showOpenDialog(win, { title: 'Open', properties: ['openFile'], filters: OPEN_FILTERS });
@@ -323,6 +327,15 @@ function buildMenu() {
         { label: 'Math Tools', accelerator: 'CmdOrCtrl+3', click: send('tab:math') },
         { label: 'Scratchpad', accelerator: 'CmdOrCtrl+4', click: send('tab:scratch') },
         { type: 'separator' },
+        {
+          label: 'Appearance',
+          submenu: [
+            { label: 'Follow the System', click: send('theme:system') },
+            { label: 'Light', click: send('theme:light') },
+            { label: 'Dark', click: send('theme:dark') },
+          ],
+        },
+        { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
@@ -365,7 +378,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 620,
     show: false,
-    backgroundColor: '#f3f2f1',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1b1a19' : '#f3f2f1',
     title: APP_NAME,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

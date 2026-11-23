@@ -1,3 +1,4 @@
+import { THEME_NAMES, nextChoice, useTheme, type ThemeChoice } from './theme';
 import { APP_NAME, APP_SHORT_NAME } from './core/brand';
 import { useEffect } from 'react';
 import { desktop } from './desktop';
@@ -34,6 +35,7 @@ export function App() {
       if (action === 'open') return void openDocument();
       if (action === 'compare') return void compareWithFile();
       if (action === 'tour') return useTour.getState().start();
+      if (action.startsWith('theme:')) return useTheme.getState().choose(action.slice(6) as ThemeChoice);
       if (action === 'saveAllAndClose') return void saveAllDirty().then((ok) => ok && desktop?.closeWindow());
       // Save acts on the workspace in view; Math Tools has no document, so fall back to the simulation.
       const kind = activeKind() ?? 'sim';
@@ -59,6 +61,9 @@ export function App() {
     document.title = `${title} — ${APP_NAME}`;
   }, [title]);
 
+  const themeChoice = useTheme((t) => t.choice);
+  const chooseTheme = useTheme((t) => t.choose);
+
   return (
     <div className="app">
       <header className="topbar">
@@ -69,6 +74,7 @@ export function App() {
           ))}
         </nav>
         <span className="spacer" />
+        <button className="theme-button" onClick={() => chooseTheme(nextChoice(themeChoice))} title={`Appearance: ${THEME_NAMES[themeChoice]}. Click to change (Auto follows this device).`} aria-label={`Appearance: ${THEME_NAMES[themeChoice]}`}>{THEME_NAMES[themeChoice]}</button>
         <button className="tour-button" onClick={() => useTour.getState().start()} title="Take the tour: a short walk round the app" aria-label="Take the tour">?</button>
       </header>
       <div className="workspace">

@@ -30,6 +30,8 @@ export interface DesktopApi {
   runEngine(id: string, code: string): Promise<{ ok: boolean; csv?: string; log: string; ms?: number; program?: string }>;
   importData(): Promise<OpenedFile | null>;
   setDirty(names: string[]): void;
+  /** Have the shell's own parts (title bar, menus, dialogs) follow the appearance chosen: 'system' | 'light' | 'dark'. */
+  setTheme?(choice: 'system' | 'light' | 'dark'): void;
   closeWindow(): void;
   onMenu(cb: (action: MenuAction) => void): () => void;
   onFileOpened(cb: (file: OpenedFile) => void): () => void;

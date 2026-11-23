@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('desktop', {
   importData: () => ipcRenderer.invoke('import:open'),
   /** Report which documents have unsaved changes, so closing the window can ask first. */
   setDirty: (names) => ipcRenderer.send('doc:dirty', names),
+  /** Have the title bar, menus and dialogs follow the appearance chosen in the app: 'system' | 'light' | 'dark'. */
+  setTheme: (choice) => ipcRenderer.send('theme:set', choice),
   /** Close the window without asking again (after the user chose Save). */
   closeWindow: () => ipcRenderer.send('app:close'),
   /** Menu commands: 'new:sim' | 'new:flow' | 'open' | 'save' | 'saveAs' | 'compare' | 'tour' | 'saveAllAndClose' | 'undo' | 'redo' | 'tab:sim' | 'tab:flow' | 'tab:math'. */

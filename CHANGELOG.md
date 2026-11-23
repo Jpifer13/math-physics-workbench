@@ -19,6 +19,11 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   for you, and explains what each is for. Take it again from Help ▸ Take the
   Tour, or the **?** at the top right.
 
+- **A dark appearance.** The app follows the device's light or dark setting,
+  or you can choose one: the button at the top right steps through Auto,
+  Light and Dark, and the desktop app also has View ▸ Appearance. Charts,
+  the flow canvas, 3-D views and the Scratchpad page all follow. Figures
+  saved to a file are always the light version on white.
 - **Scratchpad on iPad: two readers instead of one.** On iPadOS 27 the
   system's own handwriting recogniser reads each line alongside the built-in
   model, on the device. The model supplies the layout and Greek letters, the

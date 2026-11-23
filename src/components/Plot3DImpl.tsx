@@ -1,3 +1,4 @@
+import { forceLight, useTheme } from '../theme';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -149,6 +150,8 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
     }
     setTip(hit ? { left: px, top: py, lines: hit.map((val, i) => `${labels[i]}: ${fmtNum(val, 5)}`) } : null);
   };
+
+  const theme = useTheme((t) => t.theme);
 
   // One-time scene setup.
   useEffect(() => {
@@ -367,7 +370,7 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
     }
     s.render();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surface, lines, equal, height, zDomain?.[0], zDomain?.[1], labels[0], labels[1], labels[2]]);
+  }, [surface, lines, equal, height, zDomain?.[0], zDomain?.[1], labels[0], labels[1], labels[2], theme]);
 
   // Cheap per-frame updates: playback position and markers.
   useEffect(() => {
@@ -414,8 +417,11 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
     const before = s.renderer.getPixelRatio();
     // A figure shows the whole path, not the moment playback happens to be at.
     const playing = progress !== undefined;
+    // A saved figure is the light one, on white: its frame and labels are drawn in the light colours.
+    const restore = forceLight();
+    const relabel = lh !== height || theme === 'dark';
     try {
-      if (lh !== height) s.buildFrame(lh);
+      if (relabel) s.buildFrame(lh);
       s.camera.position.copy(s.controls.target).add(eye.clone().sub(s.controls.target).multiplyScalar(back));
       if (playing) {
         for (const l of s.solid) (l.geometry as LineGeometry).instanceCount = Infinity;
@@ -431,7 +437,8 @@ export default function Plot3DImpl({ surface, lines, markers, progress, labels, 
       const href = s.renderer.domElement.toDataURL('image/png');
       return { ...bitmapFigure(href, lw, lh), shownPx: width };
     } finally {
-      if (lh !== height) s.buildFrame(height);
+      restore();
+      if (relabel) s.buildFrame(height);
       s.camera.position.copy(eye);
       if (playing) {
         for (const l of s.solid) (l.geometry as LineGeometry).instanceCount = Math.max(0, Math.floor(progress));

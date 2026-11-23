@@ -1,3 +1,4 @@
+import { useTheme } from '../theme';
 import { useEffect, useMemo, useRef } from 'react';
 import { evalOverRun, type OdeModel, type SimResult } from '../core/ode';
 import { useWidth } from '../components/useSize';
@@ -45,6 +46,7 @@ export function Scene({ model, run, frame, height = 280 }: Props) {
     }
   }, [model, run]);
 
+  const theme = useTheme((t) => t.theme);
   useEffect(() => {
     const c = canvas.current;
     if (!c || !data) return;
@@ -136,7 +138,7 @@ export function Scene({ model, run, frame, height = 280 }: Props) {
         ctx.fillText(b.def.label, bx + 13, by - 10);
       }
     });
-  }, [data, frame, width, height, model, run]);
+  }, [data, frame, width, height, model, run, theme]);
 
   return (
     <div ref={ref} className="scene" style={{ height }}>
