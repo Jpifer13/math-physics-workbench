@@ -2,9 +2,9 @@ import { readStored, storageKey } from '../core/brand';
 import { addEdge, type Connection, type EdgeChangeset, type NodeChangeset } from '@xyflow/react';
 import { create } from 'zustand';
 import { layoutFlow } from '../core/docfile';
-import { inputPorts, type NodeKind } from '../core/graph';
+import { groupNodes, inputPorts, ungroupNode, type GEdge, type GroupData, type NodeKind } from '../core/graph';
 import { EXAMPLES } from './examples';
-import { emptyModel, type Cfg, type FEdge, type FlowDoc, type FNode, type ModelCfg } from './types';
+import { emptyModel, toGraph, type Cfg, type FEdge, type FlowDoc, type FNode, type ModelCfg } from './types';
 
 const STORAGE = 'flow.v1';
 
@@ -30,6 +30,12 @@ interface FlowState extends FlowDoc {
   load: (doc: FlowDoc) => void;
   /** Arrange the blocks left to right along the wires. */
   tidy: () => void;
+  /** Collapse the selected blocks into one group block. Sets `notice` when they cannot be one. */
+  groupSelected: () => void;
+  /** Put a group's blocks back in its place. */
+  ungroup: (id: string) => void;
+  /** A second copy of a block beside the first. */
+  duplicate: (id: string) => void;
   clear: () => void;
 }
 
@@ -47,6 +53,9 @@ function restore(): FlowDoc {
   }
   return clone(EXAMPLES[0]);
 }
+
+/** A wire of the engine's graph as the canvas draws it. */
+const wire = (e: GEdge): FEdge => ({ id: `${e.source}->${e.target}:${e.port}`, source: e.source, target: e.target, targetHandle: e.port });
 
 let counter = 0;
 const newId = () => `n${Date.now().toString(36)}${(counter++).toString(36)}`;
@@ -114,6 +123,43 @@ export const useFlow = create<FlowState>((set, get) => ({
     const y0 = Math.min(...get().nodes.map((n) => n.position.y));
     if (!get().nodes.length) return;
     set({ nodes: get().nodes.map((n) => ({ ...n, position: { x: x0 + at[n.id].x, y: y0 + at[n.id].y } })), docVersion: get().docVersion + 1 });
+  },
+  groupSelected: () => {
+    const { nodes, edges } = get();
+    const chosen = nodes.filter((n) => n.selected);
+    const id = newId();
+    const r = groupNodes(toGraph(nodes, edges), chosen.map((n) => n.id), id, 'Group');
+    if ('problem' in r) return set({ notice: r.problem });
+    // The group sits in the middle of the blocks it replaces and remembers where each was.
+    const x = Math.round(chosen.reduce((s, n) => s + n.position.x, 0) / chosen.length);
+    const y = Math.round(chosen.reduce((s, n) => s + n.position.y, 0) / chosen.length);
+    const made = r.graph.nodes.find((n) => n.id === id)!;
+    const cfg: GroupData = { ...(made.data as GroupData), layout: Object.fromEntries(chosen.map((n) => [n.id, [n.position.x - x, n.position.y - y]])) };
+    const inside = new Set(chosen.map((n) => n.id));
+    set({
+      nodes: [...nodes.filter((n) => !inside.has(n.id)), { id, type: 'phys', position: { x, y }, data: { kind: 'group', cfg }, selected: true }],
+      edges: r.graph.edges.map(wire),
+      selectedId: id,
+      notice: '',
+    });
+  },
+  ungroup: (id) => {
+    const { nodes, edges } = get();
+    const group = nodes.find((n) => n.id === id);
+    const r = ungroupNode(toGraph(nodes, edges), id, () => newId());
+    if (!group || !r) return;
+    const cfg = group.data.cfg as GroupData;
+    const restored = cfg.nodes.map((n, i): FNode => {
+      const [dx, dy] = cfg.layout?.[n.id] ?? [i * 40, i * 40];
+      return { id: r.ids[n.id], type: 'phys', position: { x: group.position.x + dx, y: group.position.y + dy }, data: { kind: n.kind, cfg: n.data as Cfg }, selected: true };
+    });
+    set({ nodes: [...nodes.filter((n) => n.id !== id), ...restored], edges: r.graph.edges.map(wire), selectedId: null });
+  },
+  duplicate: (id) => {
+    const node = get().nodes.find((n) => n.id === id);
+    if (!node) return;
+    const copy: FNode = { id: newId(), type: 'phys', position: { x: node.position.x + 40, y: node.position.y + 40 }, data: clone(node.data), selected: true };
+    set({ nodes: [...get().nodes.map((n) => (n.selected ? { ...n, selected: false } : n)), copy], selectedId: copy.id });
   },
   clear: () =>
     set({

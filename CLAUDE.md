@@ -26,13 +26,14 @@ doubled in native menu labels on Windows and Linux (`menuLabel` in
 npm install          # the Electron binary downloads on first launch, not here
 npm run dev          # desktop app with hot reload (Vite + Electron)
 npm start            # production build, then launch it
-npm test             # vitest; ~230 tests
+npm test             # vitest; ~245 tests
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build into dist/
 npm run dist:dir     # unpacked packaged app in release/ (fast packaging check)
 npm run dist         # installer for the current OS
 npm run dev:web      # UI only, in a browser — no file dialogs or external tools
-npm run build:cli    # the command-line mode, bundled to dist/cli/cli.mjs
+npm run build:cli    # the command-line mode, groups in
+equation flows, bundled to dist/cli/cli.mjs
 npm run -s cli -- check model.physsim   # run it (see README)
 ```
 
@@ -106,6 +107,10 @@ UI.** New numerical behaviour goes there with tests; views only display it.
   `--series-1…8` order in `styles.css`; don't invent colours. A new chart
   type gets its export buttons from `FigureExport` in `components/figure.tsx`
   by supplying a `build` function; sizing arithmetic lives in `figureSize.ts`.
+- **Flow groups.** A `group` block holds its blocks and wires in its own data.
+  `evaluate` in `core/graph.ts` expands groups into plain blocks first
+  (`expandGroups`), so nothing downstream needs to know about them: add a new
+  block kind to `compute` and it works inside groups too.
 - **Supported functions.** A function the solver accepts gets an entry in
   `REFERENCE` (`core/reference.ts`) with an example and its value; the tests
   run every entry through the solver. `ln` is not accepted (use `log`).
@@ -214,7 +219,7 @@ Python and Octave export tests pass, and "Run and compare" works with Python.
 **Next, in roadmap order** (`docs/roadmap.md` has the evidence and detail):
 1. Rest of item 7 — Morris screening for models too slow for Sobol; correlated
    inputs; feeding fitted uncertainties in as the input spread.
-2. Rest of item 10 — sub-flows.
+2. Rest of item 10 — editing a group in place; linked copies of a group.
 
 Known rough edges: `npm audit` reports a moderate advisory in the installer
 build tool (dev-only; the automatic fix is a breaking downgrade); there is no

@@ -1,7 +1,7 @@
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { createContext, memo, useContext, useEffect } from 'react';
 import {
-  getOp, inputPorts, type ConstantData, type FormulaData, type NodeResult, type OpData, type OutputData, type QuantityData,
+  getOp, inputPorts, type ConstantData, type FormulaData, type GroupData, type NodeResult, type OpData, type OutputData, type QuantityData,
 } from '../core/graph';
 import { symbolToLatex } from '../core/expr';
 import { getConstant, knownDimName, quantityText, UNITS, unitGroups } from '../core/units';
@@ -46,6 +46,10 @@ function header(node: FNode['data']): { glyph: string; title: string; caption: s
       return { glyph: 'ƒ', title: (node.cfg as FormulaData).label, caption: 'Formula' };
     case 'output':
       return { glyph: '=', title: (node.cfg as OutputData).label, caption: 'Output' };
+    case 'group': {
+      const g = node.cfg as GroupData;
+      return { glyph: '▣', title: g.label, caption: `Group of ${g.nodes.length} blocks` };
+    }
   }
 }
 

@@ -65,6 +65,7 @@ function Editor() {
   }, [rf]);
 
   const fileName = s.filePath?.split(/[\\/]/).pop();
+  const selectedCount = s.nodes.filter((n) => n.selected).length;
 
   return (
     <ResultsContext.Provider value={results}>
@@ -123,7 +124,10 @@ function Editor() {
               <Controls showInteractive={false} />
               <MiniMap pannable zoomable nodeColor="#c8c6c4" maskColor="rgba(243,242,241,0.7)" style={{ width: 132, height: 88 }} />
             </ReactFlow>
-            {s.nodes.length > 1 && <button className="btn small canvas-tidy" onClick={s.tidy} title="Arrange the blocks left to right along the wires (undo restores your own arrangement)">Tidy layout</button>}
+            <div className="canvas-tools">
+              {selectedCount > 1 && <button className="btn small primary" onClick={s.groupSelected} title="Collapse the selected blocks into one block you can name, copy and reuse">Group {selectedCount} blocks</button>}
+              {s.nodes.length > 1 && <button className="btn small" onClick={s.tidy} title="Arrange the blocks left to right along the wires (undo restores your own arrangement)">Tidy layout</button>}
+            </div>
             {!s.nodes.length && (
               <div className="canvas-empty">
                 <h3>Start building</h3>

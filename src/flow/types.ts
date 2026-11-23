@@ -1,7 +1,7 @@
 import type { Edge, Node } from '@xyflow/react';
-import type { ConstantData, FormulaData, Graph, NodeKind, OpData, OutputData, QuantityData } from '../core/graph';
+import type { ConstantData, FormulaData, Graph, GroupData, NodeKind, OpData, OutputData, QuantityData } from '../core/graph';
 
-export type Cfg = QuantityData | ConstantData | OpData | FormulaData | OutputData;
+export type Cfg = QuantityData | ConstantData | OpData | FormulaData | OutputData | GroupData;
 export type FNodeData = { kind: NodeKind; cfg: Cfg };
 export type FNode = Node<FNodeData, 'phys'>;
 export type FEdge = Edge;

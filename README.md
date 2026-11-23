@@ -147,6 +147,13 @@ wire outputs into inputs, and end with a Result block.
   **Copy expression** and **Copy LaTeX** put it on the clipboard.
 - **Sweeps** — chart the output against one input (linear or log axes), or two
   inputs as a heat map or a rotatable 3D surface, and export the data as CSV.
+- **Groups** — select several blocks and collapse them into one named block.
+  Wires that crossed into the selection become its input ports, named after
+  what feeds them; the block shows the value it passes on. Units are still
+  checked inside, the equation view is unchanged, and a failure names the
+  block inside that caused it. Duplicate a group to reuse a calculation;
+  ungroup to edit it. Groups can hold groups. *Tidy layout* arranges a flow
+  left to right along its wires.
 - Ten worked examples. Flows save as `.physflow`.
 
 ![Equation flow for E = mc²](docs/flow-builder.png)

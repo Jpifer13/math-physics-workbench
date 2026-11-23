@@ -19,6 +19,9 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   a measurement with 68% and 95% intervals, a band around the observable over
   time, and Sobol first-order and total sensitivity indices with intervals.
   The analysis is saved with the simulation and recorded in CSV exports.
+- **Groups in equation flows.** Select several blocks and collapse them into
+  one named block; duplicate it to reuse the calculation, ungroup to edit.
+  Any block can now be duplicated from the inspector.
 - **Command-line mode.** `run`, `experiment`, `uncertainty`, `check` and
   `template` work without the window, from a source checkout
   (`npm run -s cli -- …`, `make cli ARGS="…"`) or from the installed app's
@@ -61,7 +64,8 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   launch the app copies your window position, located programs and working
   copies from the old data folder, which it leaves in place.
 
-- File format is now 3. Files are laid out for version control: fixed key
+- File format is now 4 (format 4 added group blocks to flows; format 3 the
+  layout below). Files are laid out for version control: fixed key
   order, one item per line, and a flow's block positions in their own
   `layout` section. Format 2 added an optional `uncertainty` analysis to
   simulations. Files from formats 1 and 2 open unchanged; version 0.1.0

@@ -204,17 +204,21 @@ resolution. Large diagrams are routinely broken up to stay manageable.
 *Evidence: vendor documentation and user forums ([NI][ni-merge],
 [MathWorks][mw-merge], [NI forum][ni-forum]) — anecdotal but consistent.*
 
-**Status: mostly done.** Files are written with keys in a fixed order and one
+**Status: done.** Files are written with keys in a fixed order and one
 state, parameter, block or wire per line; a flow's block positions live in a
 separate `layout` section, apart from what the blocks compute. Changing one
 parameter changes one line of the file, and dragging a block changes one line
 of the layout. *Compare with a file* lists the differences between the open
 document and a saved one in the model's terms, marks which of them change the
 numbers, and for a simulation can show the file's run as a dashed reference.
-*Tidy layout* arranges a flow left to right along its wires.
-**Still open:** sub-flows (collapsing a group of blocks into one reusable
-block); comparing two files with each other rather than a file with the open
-document; a three-way merge.
+*Tidy layout* arranges a flow left to right along its wires. Selected blocks
+collapse into one named *group* block with input ports and a single output;
+groups nest, can be duplicated to reuse a calculation, and open again with
+*Ungroup*. A group is evaluated as the blocks inside it, so unit checking,
+the symbolic equation and sweeps behave exactly as before grouping.
+**Limits:** a group has one output; its contents are edited by ungrouping,
+not in place; duplicates are independent copies, not linked instances.
+Comparing two files with each other, and a three-way merge, are not there.
 
 ### 11. Little time to learn a tool
 
@@ -257,12 +261,14 @@ flows are not available from the command line.
 
 ## Suggested order for what remains
 
-Done: items 1 to 9, 11 and 12; item 10 mostly.
+Done: all twelve items.
 
-1. Sub-flows, the remaining part of item 10.
-2. Extras noted under items 7, 10 and 12: Morris screening and correlated
-   inputs; comparing two files; parallel runs and fitting from the command
-   line.
+What is left are the extras noted as limits under each item, none of them
+planned in detail: Morris screening and correlated inputs (7); editing a
+group in place and linked copies (10); comparing two files (10); parallel
+runs and fitting from the command line (12). The better guide to what comes
+next is now real use: the roadmap's ordering was a judgement made before the
+app had users.
 
 ## Sources
 

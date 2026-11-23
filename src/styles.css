@@ -20,6 +20,7 @@
   --tone-op: #c2500f;
   --tone-formula: #a4326b;
   --tone-output: #0e7a0d;
+  --tone-group: #4a5560;
 
   /* Chart series (fixed order) */
   --series-1: #2a78d6;
@@ -155,6 +156,7 @@ input[type='checkbox'] { accent-color: var(--accent); margin: 0; }
 .tone-op { --tone: var(--tone-op); }
 .tone-formula { --tone: var(--tone-formula); }
 .tone-output { --tone: var(--tone-output); }
+.tone-group { --tone: var(--tone-group); }
 
 .flow-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .commandbar {
@@ -548,7 +550,9 @@ ul.howto { padding-left: 18px; }
 .tag.added { border-color: #bfe3bf; background: #f1faf1; }
 .tag.removed { border-color: #f1d0d3; background: var(--danger-soft); }
 .def-compare { display: block; margin: 2px 0 6px auto; font-size: 12px; }
-.canvas-tidy { position: absolute; top: 8px; right: 8px; z-index: 5; }
+.canvas-tools { position: absolute; top: 8px; right: 8px; z-index: 5; display: flex; gap: 6px; }
+.panel-actions { display: inline-flex; gap: 5px; }
+.pnode.tone-group { border-style: double; border-width: 3px; }
 
 /* ------------------------------------------------------------ learning aids */
 .ed-row .expr-input { flex: 1; min-width: 0; position: relative; display: flex; }

@@ -88,7 +88,9 @@ export type ReadResult =
  * Parse a document file of any format this version understands.
  * Migrations: 1 → 2 added an optional `uncertainty` analysis to simulations
  * (nothing to convert). 2 → 3 moved flow block positions into `layout` and
- * flattened each block to { id, kind, cfg }; both shapes are read.
+ * flattened each block to { id, kind, cfg }; both shapes are read. 3 → 4
+ * added the group block to flows (nothing to convert; a version that does not
+ * know groups must not open such a file, hence the bump).
  */
 export function readDocument(text: string, currentFormat: number): ReadResult {
   let data: Record<string, unknown>;

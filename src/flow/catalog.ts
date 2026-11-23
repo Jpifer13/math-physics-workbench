@@ -16,10 +16,10 @@ export interface PaletteGroup {
   tone: Tone;
   items: PaletteItem[];
 }
-export type Tone = 'input' | 'constant' | 'op' | 'formula' | 'output';
+export type Tone = 'input' | 'constant' | 'op' | 'formula' | 'output' | 'group';
 
 export const toneOf = (kind: NodeKind): Tone =>
-  kind === 'quantity' ? 'input' : kind === 'constant' ? 'constant' : kind === 'op' ? 'op' : kind === 'formula' ? 'formula' : 'output';
+  kind === 'quantity' ? 'input' : kind === 'constant' ? 'constant' : kind === 'op' ? 'op' : kind === 'formula' ? 'formula' : kind === 'group' ? 'group' : 'output';
 
 const quantity = (label: string, symbol: string, value: number, unit: string, glyph = symbol): PaletteItem => ({
   key: `q-${label}`, kind: 'quantity', cfg: { label, symbol, value, unit }, title: label, glyph,

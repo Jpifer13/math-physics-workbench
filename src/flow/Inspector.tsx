@@ -1,6 +1,6 @@
 import { useContext } from 'react';
 import {
-  getOp, inputPorts, OPS, type ConstantData, type FormulaData, type OpData, type OutputData, type QuantityData,
+  getOp, inputPorts, nodeLabel, OPS, type ConstantData, type FormulaData, type GroupData, type OpData, type OutputData, type QuantityData,
 } from '../core/graph';
 import { compatibleUnits, CONSTANTS, dimName, fmtNum, getConstant, quantityText } from '../core/units';
 import { Tex } from '../components/Tex';
@@ -23,6 +23,8 @@ export function Inspector() {
   const description = useFlow((s) => s.description);
   const updateCfg = useFlow((s) => s.updateCfg);
   const removeNode = useFlow((s) => s.removeNode);
+  const ungroup = useFlow((s) => s.ungroup);
+  const duplicate = useFlow((s) => s.duplicate);
   const setMeta = useFlow((s) => s.setMeta);
   const result = useContext(ResultsContext).get(selectedId ?? '');
 
@@ -57,8 +59,11 @@ export function Inspector() {
   return (
     <aside className="inspector">
       <div className="panel-title">
-        {kind === 'quantity' ? 'Input' : kind === 'constant' ? 'Constant' : kind === 'op' ? 'Operation' : kind === 'formula' ? 'Formula' : 'Output'}
-        <button className="btn danger small" onClick={() => removeNode(node.id)}>Delete</button>
+        {kind === 'quantity' ? 'Input' : kind === 'constant' ? 'Constant' : kind === 'op' ? 'Operation' : kind === 'formula' ? 'Formula' : kind === 'group' ? 'Group' : 'Output'}
+        <span className="panel-actions">
+          <button className="btn small" onClick={() => duplicate(node.id)} title="A second copy of this block beside it">Duplicate</button>
+          <button className="btn danger small" onClick={() => removeNode(node.id)}>Delete</button>
+        </span>
       </div>
       <div className="inspector-scroll">
         {kind === 'quantity' && (() => {
@@ -142,6 +147,26 @@ export function Inspector() {
                   {units.filter((u) => u.symbol).map((u) => <option key={u.symbol} value={u.symbol}>{u.symbol} — {u.name}</option>)}
                 </select>
               </Field>
+            </>
+          );
+        })()}
+
+        {kind === 'group' && (() => {
+          const g = cfg as GroupData;
+          const ports = inputPorts({ kind, data: cfg });
+          return (
+            <>
+              <Field label="Name"><input value={g.label} onChange={(e) => set({ label: e.target.value })} /></Field>
+              <p className="muted">
+                {ports.length ? <>Input ports: {ports.join(', ')}. </> : <>No inputs: everything it needs is inside. </>}
+                Its value is that of <b>{nodeLabel(g.nodes.find((n) => n.id === g.output) ?? { kind: 'op', data: { op: '' } })}</b>.
+              </p>
+              <div className="panel-subtitle">Inside</div>
+              <ul className="howto">
+                {g.nodes.map((n) => <li key={n.id}>{nodeLabel(n)}{n.kind === 'group' ? ' (a group)' : ''}</li>)}
+              </ul>
+              <button className="btn" onClick={() => ungroup(node.id)} title="Put these blocks back on the canvas in place of the group">Ungroup</button>
+              <p className="muted">Duplicate a group to use the same calculation again with different inputs. To change what is inside, ungroup it, edit, and group again.</p>
             </>
           );
         })()}

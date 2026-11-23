@@ -8,18 +8,34 @@ import { evalFormula, formulaInputs, type Val } from './formula';
 import * as Q from './qmath';
 import { fmtNumLatex, fromUnit, getConstant, getUnit, siUnitFor, unitLatex, type Quantity } from './units';
 
-export type NodeKind = 'quantity' | 'constant' | 'op' | 'formula' | 'output';
+export type NodeKind = 'quantity' | 'constant' | 'op' | 'formula' | 'output' | 'group';
 
 export interface QuantityData { label: string; symbol: string; value: number; unit: string; min?: number; max?: number }
 export interface ConstantData { constId: string }
 export interface OpData { op: string }
 export interface FormulaData { label: string; expr: string }
 export interface OutputData { label: string; symbol: string; unit: string }
+/**
+ * Several blocks collapsed into one. The blocks and the wires between them
+ * are kept inside; wires that crossed the boundary became the group's input
+ * ports and its single output.
+ */
+export interface GroupData {
+  label: string;
+  nodes: GNode[];
+  edges: GEdge[];
+  /** Each input port, and the inner input it feeds. One port may feed several. */
+  inputs: { port: string; node: string; nodePort: string }[];
+  /** The inner block whose value is the group's value. */
+  output: string;
+  /** Where each inner block sat relative to the group, for when it is opened again. */
+  layout?: Record<string, [number, number]>;
+}
 
 export interface GNode {
   id: string;
   kind: NodeKind;
-  data: QuantityData | ConstantData | OpData | FormulaData | OutputData;
+  data: QuantityData | ConstantData | OpData | FormulaData | OutputData | GroupData;
 }
 export interface GEdge {
   source: string;
@@ -91,9 +107,147 @@ export function inputPorts(node: Pick<GNode, 'kind' | 'data'>): string[] {
       return formulaInputs((node.data as FormulaData).expr);
     case 'output':
       return ['in'];
+    case 'group':
+      return [...new Set((node.data as GroupData).inputs.map((i) => i.port))];
     default:
       return [];
   }
+}
+
+/** The id an inner block of a group takes when the group is expanded for evaluation. */
+const innerId = (group: string, id: string) => `${group}/${id}`;
+
+/**
+ * Replace every group by the blocks inside it, so the evaluator only ever
+ * sees plain blocks. Wires into a group go to the inner inputs its ports
+ * feed; wires out of it come from its output block. `outputs` records which
+ * expanded block stands for each group.
+ */
+export function expandGroups(graph: Graph): { graph: Graph; outputs: Map<string, string> } {
+  const outputs = new Map<string, string>();
+  if (!graph.nodes.some((n) => n.kind === 'group')) return { graph, outputs };
+  const nodes: GNode[] = [];
+  const edges: GEdge[] = [];
+  const groups = new Map<string, GroupData>();
+  for (const n of graph.nodes) {
+    if (n.kind !== 'group') { nodes.push(n); continue; }
+    const g = n.data as GroupData;
+    groups.set(n.id, g);
+    outputs.set(n.id, innerId(n.id, g.output));
+    for (const inner of g.nodes) nodes.push({ ...inner, id: innerId(n.id, inner.id) });
+    for (const e of g.edges) edges.push({ source: innerId(n.id, e.source), target: innerId(n.id, e.target), port: e.port });
+  }
+  for (const e of graph.edges) {
+    const source = outputs.get(e.source) ?? e.source;
+    const into = groups.get(e.target);
+    if (!into) { edges.push({ source, target: e.target, port: e.port }); continue; }
+    for (const i of into.inputs) if (i.port === e.port) edges.push({ source, target: innerId(e.target, i.node), port: i.nodePort });
+  }
+  // A group inside a group is now a top-level group of the expanded graph: go round again.
+  const deeper = expandGroups({ nodes, edges });
+  for (const [id, out] of outputs) outputs.set(id, deeper.outputs.get(out) ?? out);
+  for (const [id, out] of deeper.outputs) if (!outputs.has(id)) outputs.set(id, out);
+  return { graph: deeper.graph, outputs };
+}
+
+/** A short name for a block, for messages and port labels. */
+export function nodeLabel(node: Pick<GNode, 'kind' | 'data'>): string {
+  const d = node.data as unknown as Record<string, unknown>;
+  if (node.kind === 'op') return getOp(String(d.op))?.label ?? 'Operation';
+  if (node.kind === 'constant') return getConstant(String(d.constId))?.name ?? 'Constant';
+  return String(d.label || d.symbol || node.kind);
+}
+
+/**
+ * Collapse the blocks `ids` into one group block called `groupId`. Wires that
+ * crossed into the selection become input ports; the one block whose value
+ * leaves the selection becomes the output. Returns the reason instead when
+ * the selection cannot be a group.
+ */
+export function groupNodes(graph: Graph, ids: string[], groupId: string, label: string): { graph: Graph } | { problem: string } {
+  const inside = new Set(ids.filter((id) => graph.nodes.some((n) => n.id === id)));
+  if (inside.size < 2) return { problem: 'Select at least two blocks to group.' };
+  const members = graph.nodes.filter((n) => inside.has(n.id));
+  if (members.some((n) => n.kind === 'output')) return { problem: 'A Result block cannot go inside a group: it has no value to pass on. Leave it out of the selection.' };
+
+  const inner = graph.edges.filter((e) => inside.has(e.source) && inside.has(e.target));
+  const incoming = graph.edges.filter((e) => !inside.has(e.source) && inside.has(e.target));
+  const outgoing = graph.edges.filter((e) => inside.has(e.source) && !inside.has(e.target));
+
+  // The output: the one block wired to the outside, or failing that the one block nothing inside consumes.
+  let sources = [...new Set(outgoing.map((e) => e.source))];
+  if (!sources.length) sources = members.filter((n) => !inner.some((e) => e.source === n.id)).map((n) => n.id);
+  if (sources.length !== 1) {
+    const names = sources.map((id) => nodeLabel(graph.nodes.find((n) => n.id === id)!));
+    return { problem: `A group has one output, but ${names.length} of these blocks (${names.join(', ')}) pass a value on. Group a part of the flow that ends in a single block.` };
+  }
+
+  // One port per outside block feeding the selection. A port is named after the quantity wired to it now
+  // (m, c) so the collapsed block reads like the formula; failing that, after the inner input it reaches.
+  const hint = (sourceId: string, fallback: string) => {
+    const n = graph.nodes.find((x) => x.id === sourceId);
+    if (n?.kind === 'quantity') return (n.data as QuantityData).symbol || (n.data as QuantityData).label || fallback;
+    if (n?.kind === 'constant') return getConstant((n.data as ConstantData).constId)?.symbol || fallback;
+    return fallback;
+  };
+  const inputs: GroupData['inputs'] = [];
+  const portOf = new Map<string, string>();
+  const taken = new Set<string>();
+  for (const e of incoming) {
+    let port = portOf.get(e.source);
+    if (!port) {
+      const base = hint(e.source, e.port);
+      port = base;
+      for (let k = 2; taken.has(port); k++) port = `${base}${k}`;
+      taken.add(port);
+      portOf.set(e.source, port);
+    }
+    inputs.push({ port, node: e.target, nodePort: e.port });
+  }
+
+  const group: GNode = { id: groupId, kind: 'group', data: { label, nodes: members, edges: inner, inputs, output: sources[0] } };
+  const seen = new Set<string>();
+  return {
+    graph: {
+      nodes: [...graph.nodes.filter((n) => !inside.has(n.id)), group],
+      edges: [
+        ...graph.edges.filter((e) => !inside.has(e.source) && !inside.has(e.target)),
+        // One wire per port, however many inner inputs it feeds.
+        ...incoming.filter((e) => !seen.has(e.source) && seen.add(e.source)).map((e) => ({ source: e.source, target: groupId, port: portOf.get(e.source)! })),
+        ...outgoing.map((e) => ({ source: groupId, target: e.target, port: e.port })),
+      ],
+    },
+  };
+}
+
+/**
+ * Put a group's blocks back in its place. `rename` gives a fresh id for an
+ * inner block whose own id is already in use (a group that was duplicated).
+ */
+export function ungroupNode(graph: Graph, groupId: string, rename: (id: string) => string): { graph: Graph; ids: Record<string, string> } | null {
+  const node = graph.nodes.find((n) => n.id === groupId);
+  if (!node || node.kind !== 'group') return null;
+  const g = node.data as GroupData;
+  const used = new Set(graph.nodes.filter((n) => n.id !== groupId).map((n) => n.id));
+  const ids: Record<string, string> = {};
+  for (const n of g.nodes) {
+    ids[n.id] = used.has(n.id) ? rename(n.id) : n.id;
+    used.add(ids[n.id]);
+  }
+  return {
+    ids,
+    graph: {
+      nodes: [...graph.nodes.filter((n) => n.id !== groupId), ...g.nodes.map((n) => ({ ...n, id: ids[n.id] }))],
+      edges: [
+        ...graph.edges.flatMap((e) => {
+          if (e.source === groupId) return [{ ...e, source: ids[g.output] }];
+          if (e.target === groupId) return g.inputs.filter((i) => i.port === e.port).map((i) => ({ source: e.source, target: ids[i.node], port: i.nodePort }));
+          return [e];
+        }),
+        ...g.edges.map((e) => ({ source: ids[e.source], target: ids[e.target], port: e.port })),
+      ],
+    },
+  };
 }
 
 export interface NodeResult {
@@ -109,7 +263,9 @@ export interface EvalOptions {
   overrides?: Record<string, number>;
 }
 
-export function evaluate(graph: Graph, opts: EvalOptions = {}): Map<string, NodeResult> {
+export function evaluate(original: Graph, opts: EvalOptions = {}): Map<string, NodeResult> {
+  // Groups are evaluated as the blocks inside them; each then reports its output block's result.
+  const { graph, outputs } = expandGroups(original);
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
   const incoming = new Map<string, GEdge>();
   for (const e of graph.edges) incoming.set(`${e.target}:${e.port}`, e);
@@ -161,6 +317,9 @@ export function evaluate(graph: Graph, opts: EvalOptions = {}): Map<string, Node
       }
       case 'output':
         return input(node, 'in');
+      case 'group':
+        // Unreachable: groups are expanded before evaluation.
+        throw new Error('This group could not be opened');
     }
   };
 
@@ -188,6 +347,16 @@ export function evaluate(graph: Graph, opts: EvalOptions = {}): Map<string, Node
   }
 
   for (const n of graph.nodes) visit(n.id);
+  for (const [group, out] of outputs) {
+    const r = results.get(out);
+    if (!r) { results.set(group, { error: 'This group has no output block' }); continue; }
+    if (!r.error) { results.set(group, r); continue; }
+    // The blocks inside cannot be seen, so name the one that actually failed rather than "waiting".
+    const culprit = graph.nodes.find((n) => n.id.startsWith(`${group}/`) && results.get(n.id)?.error && !results.get(n.id)!.upstream);
+    results.set(group, culprit
+      ? { error: `Inside the group, ${nodeLabel(culprit)}: ${results.get(culprit.id)!.error}` }
+      : r);
+  }
   return results;
 }
 
