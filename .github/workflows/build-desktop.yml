@@ -32,22 +32,37 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # Code signing is optional. With none of these repository secrets set the
+      # installers are built unsigned; set them and the same workflow signs
+      # (and, on macOS, notarises) the builds. See "Signing the installers" in
+      # the README for what each one is. Only the ones that are set are passed
+      # on: an empty CSC_LINK is read as the path of a certificate file, and the
+      # macOS build fails looking for it.
+      - name: Pass on the signing settings that are configured
+        shell: bash
+        env:
+          IN_CSC_LINK: ${{ secrets.CSC_LINK }}
+          IN_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          IN_WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          IN_WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          IN_APPLE_ID: ${{ secrets.APPLE_ID }}
+          IN_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          IN_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          count=0
+          for name in CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            input="IN_$name"
+            if [ -n "${!input}" ]; then
+              { echo "$name<<__END_OF_VALUE__"; echo "${!input}"; echo "__END_OF_VALUE__"; } >> "$GITHUB_ENV"
+              count=$((count + 1))
+            fi
+          done
+          echo "$count signing settings configured"
       - run: npm run dist -- --publish never
         env:
-          # Code signing is optional. With none of these repository secrets set the
-          # installers are built unsigned; set them and the same workflow signs
-          # (and, on macOS, notarises) the builds. See "Signing the installers" in
-          # the README for what each one is.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # Never pick up a certificate that merely happens to be in the runner's keychain.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: math-physics-workbench-${{ matrix.os }}
           path: |
