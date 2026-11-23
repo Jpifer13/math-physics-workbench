@@ -244,6 +244,11 @@ lines are read and answered, portrait and landscape layouts hold. Also read
 correctly in Safari on the iPad Air simulator (iPadOS 27.0) with pre-loaded
 strokes; boot one with `xcrun simctl boot <id>` and `xcrun simctl openurl`.
 
+Installer workflow, run 2026-11-22 on GitHub's runners: it builds an NSIS
+installer on Windows, a dmg on macOS (arm64) and an AppImage and deb on Linux,
+all unsigned. The macOS dmg was downloaded and mounted; the app in it has the
+right bundle id, launches its window, and runs the command line.
+
 **Not verified — treat as untested:**
 - The web build on a real iPad or Android tablet: Apple Pencil input, palm
   rejection, model memory use in Safari, offline install, recognition quality
@@ -257,12 +262,10 @@ strokes; boot one with `xcrun simctl boot <id>` and `xcrun simctl openurl`.
   loaded from `file://`), so the Scratchpad there is type-in only.
 - Mathematica and Julia export: generated, never run against a real install.
 - MATLAB itself: the `.m` export is verified in GNU Octave only.
-- Installers (`npm run dist`): only Linux has been built. On macOS the
-  unpacked app (`npm run dist:dir`) builds with the right name and bundle id
-  but was not launched; Windows has not been run at all.
+- Installers: the workflow builds all three (see below), but only the macOS
+  one has been run. The Windows installer and the Linux AppImage and deb have
+  never been installed or launched; the app has never run on Windows at all.
 - Code signing and notarisation: documented in the README, never run.
-- The installer workflow (`.github/workflows/build-desktop.yml`): in place,
-  never run.
 - The LaTeX summary: structurally tested, never compiled.
 
 **Waiting on the owner:**

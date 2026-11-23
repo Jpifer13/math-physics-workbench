@@ -15,7 +15,8 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
 ### Added
 
 - Continuous integration: every push is type-checked, tested (with the
-  Python and Octave export tests really run) and built.
+  Python and Octave export tests really run) and built. Installers for
+  Windows, macOS and Linux build from the Actions tab or on a `v*` tag.
 - **Scratchpad.** A fourth workspace for writing mathematics by hand. Lines
   are read, typeset and worked out: values, variables defined anywhere on the
   page, equations with one unknown, functions, definite integrals, sums and
