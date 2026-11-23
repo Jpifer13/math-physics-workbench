@@ -48,45 +48,100 @@ export interface InkLine {
   key: string;
 }
 
+const width = (b: Box) => b.x1 - b.x0;
+const height = (b: Box) => b.y1 - b.y0;
+/** How far apart two ranges are; negative by the amount they overlap. */
+const gap = (a0: number, a1: number, b0: number, b1: number) => Math.max(a0, b0) - Math.min(a1, b1);
+
 /**
  * Split a page of strokes into written lines.
  *
- * Strokes that overlap vertically, or nearly do, belong to one line — which
- * keeps a fraction's numerator, bar and denominator together — and a clear
- * vertical gap starts a new line. Within a band, a wide horizontal gap splits
- * expressions written side by side.
+ * Strokes on the same row join into a line: they share part of their height
+ * and are not far apart sideways. Rows are then joined only where the writing
+ * shows they are one expression: a fraction bar with ink above and below it,
+ * or something small tucked against a line (an exponent, the limits of a sum,
+ * the dot of an i). Two full lines written close together stay two lines,
+ * however small the gap, and what is written elsewhere on the page has no say:
+ * a tall fraction in the right-hand column does not weld together the lines
+ * beside it on the left.
  */
 export function groupLines(strokes: Stroke[]): InkLine[] {
   if (!strokes.length) return [];
   const size = writingSize(strokes);
-  const vGap = 0.3 * size;
   const hGap = 3 * size;
-  const items = strokes.map((s) => ({ s, b: strokeBox(s) })).sort((a, b) => a.b.y0 - b.b.y0);
+  const boxes = strokes.map(strokeBox);
+  const n = strokes.length;
 
-  const bands: (typeof items)[] = [];
-  let bottom = -Infinity;
-  for (const it of items) {
-    if (!bands.length || it.b.y0 > bottom + vGap) { bands.push([it]); bottom = it.b.y1; }
-    else { bands[bands.length - 1].push(it); bottom = Math.max(bottom, it.b.y1); }
-  }
+  // Union-find over strokes.
+  const parent = strokes.map((_, i) => i);
+  const find = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const join = (a: number, b: number) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[rb] = ra; };
+  const groups = () => {
+    const by = new Map<number, number[]>();
+    for (let i = 0; i < n; i++) { const r = find(i); const g = by.get(r); if (g) g.push(i); else by.set(r, [i]); }
+    return [...by.values()].map((members) => ({ members, box: unionBox(members.map((i) => boxes[i])) }));
+  };
 
-  const lines: InkLine[] = [];
-  for (const band of bands) {
-    band.sort((a, b) => a.b.x0 - b.b.x0);
-    let run = [band[0]];
-    let right = band[0].b.x1;
-    const flush = () => {
-      const ids = run.map((r) => r.s.id).sort((a, b) => a - b);
-      // Moving or redrawing any stroke changes the key, so stale results are never shown against new ink.
-      const sum = run.reduce((h, r) => (h * 31 + r.s.pts.length * 7 + Math.round(r.s.pts[0] + r.s.pts[1])) | 0, 17);
-      lines.push({ ids, box: unionBox(run.map((r) => r.b)), key: `${ids.join('.')}:${sum}` });
-    };
-    for (const it of band.slice(1)) {
-      if (it.b.x0 > right + hGap) { flush(); run = [it]; right = it.b.x1; }
-      else { run.push(it); right = Math.max(right, it.b.x1); }
+  // 1. Rows. A flat stroke (a minus, a bar of "=") is given a little height so that it can share a row.
+  const tall = (b: Box): [number, number] => {
+    const pad = Math.max(0, (0.25 * size - height(b)) / 2);
+    return [b.y0 - pad, b.y1 + pad];
+  };
+  for (let i = 0; i < n; i++) {
+    const [i0, i1] = tall(boxes[i]);
+    for (let j = i + 1; j < n; j++) {
+      if (gap(boxes[i].x0, boxes[i].x1, boxes[j].x0, boxes[j].x1) > hGap) continue;
+      const [j0, j1] = tall(boxes[j]);
+      const shared = -gap(i0, i1, j0, j1);
+      // Sharing a sliver of height is not sharing a row: an exponent's foot often dips to the top of its base.
+      if (shared >= 0.3 * Math.min(i1 - i0, j1 - j0)) join(i, j);
     }
-    flush();
   }
+
+  // 2. Fractions. A wide, flat stroke with ink directly above and directly below it is a fraction bar.
+  const near = 0.6 * size;
+  for (let i = 0; i < n; i++) {
+    const bar = boxes[i];
+    if (width(bar) < 0.8 * size || height(bar) > 0.35 * width(bar)) continue;
+    const over = (b: Box) => -gap(bar.x0, bar.x1, b.x0, b.x1) >= 0.5 * Math.min(width(b), width(bar));
+    const above: number[] = [], below: number[] = [];
+    for (let j = 0; j < n; j++) {
+      if (j === i || !over(boxes[j])) continue;
+      const midY = (boxes[j].y0 + boxes[j].y1) / 2;
+      const barY = (bar.y0 + bar.y1) / 2;
+      if (midY < barY && bar.y0 - boxes[j].y1 <= near && boxes[j].y1 <= bar.y1) above.push(j);
+      else if (midY > barY && boxes[j].y0 - bar.y1 <= near && boxes[j].y0 >= bar.y0) below.push(j);
+    }
+    if (above.length && below.length) for (const j of [...above, ...below]) join(i, j);
+  }
+
+  // 3. Attachments. Something much smaller than a line and right against it belongs to that line.
+  for (let changed = true; changed;) {
+    changed = false;
+    const gs = groups();
+    for (const small of gs) {
+      let best: (typeof gs)[number] | null = null;
+      let bestGap = Infinity;
+      for (const big of gs) {
+        if (big === small) continue;
+        if (width(small.box) * Math.max(height(small.box), 1) > 0.45 * width(big.box) * Math.max(height(big.box), 1)) continue;
+        const dx = gap(small.box.x0, small.box.x1, big.box.x0, big.box.x1);
+        const dy = gap(small.box.y0, small.box.y1, big.box.y0, big.box.y1);
+        if (dx > 0.5 * size || dy > 0.5 * size) continue;
+        const d = Math.max(dx, 0) + Math.max(dy, 0);
+        if (d < bestGap) { bestGap = d; best = big; }
+      }
+      if (best) { join(small.members[0], best.members[0]); changed = true; break; }
+    }
+  }
+
+  const lines = groups().map((g): InkLine => {
+    const run = g.members.map((i) => strokes[i]);
+    const ids = run.map((s) => s.id).sort((a, b) => a - b);
+    // Moving or redrawing any stroke changes the key, so stale results are never shown against new ink.
+    const sum = [...run].sort((a, b) => a.id - b.id).reduce((h, s) => (h * 31 + s.pts.length * 7 + Math.round(s.pts[0] + s.pts[1])) | 0, 17);
+    return { ids, box: g.box, key: `${ids.join('.')}:${sum}` };
+  });
   return lines.sort((a, b) => a.box.y0 - b.box.y0 || a.box.x0 - b.box.x0);
 }
 
