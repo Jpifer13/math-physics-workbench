@@ -19,6 +19,12 @@ A change to the `.physsim` or `.physflow` format (`FILE_FORMAT` in
   for you, and explains what each is for. Take it again from Help ▸ Take the
   Tour, or the **?** at the top right.
 
+- **Scratchpad on iPad: two readers instead of one.** On iPadOS 27 the
+  system's own handwriting recogniser reads each line alongside the built-in
+  model, on the device. The model supplies the layout and Greek letters, the
+  system recogniser the digits, which the model often gets wrong. Where the
+  two disagree, the reading not chosen is offered under the line to tap.
+
 ### Fixed
 
 - **Scratchpad: the Pencil writes when your palm lands first.** Resting your

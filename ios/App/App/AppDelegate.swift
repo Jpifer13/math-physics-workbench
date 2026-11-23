@@ -42,3 +42,64 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return config
     }
 }
+
+import PencilKit
+
+/// The app's web view, with the handwriting bridge registered.
+class AppViewController: CAPBridgeViewController {
+    override open func capacitorDidLoad() {
+        bridge?.registerPluginInstance(InkReaderPlugin())
+    }
+}
+
+/// Hands a line of the Scratchpad's strokes to the system handwriting recogniser and returns the text it reads.
+/// The recogniser runs on the device. It needs iPadOS 27.
+@objc(InkReaderPlugin)
+public class InkReaderPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "InkReaderPlugin"
+    public let jsName = "InkReader"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func read(_ call: CAPPluginCall) {
+        guard let raw = call.getArray("strokes") as? [[NSNumber]] else {
+            call.reject("No strokes were given.")
+            return
+        }
+        let strokes = raw.map { $0.map { $0.doubleValue } }
+        guard #available(iOS 27.0, *) else {
+            call.reject("Reading strokes needs iPadOS 27 or later.")
+            return
+        }
+        Task {
+            let recogniser = PKStrokeRecognizer(preferredLanguages: nil)
+            await recogniser.updateDrawing(InkReaderPlugin.drawing(from: strokes))
+            let text = await recogniser.recognizedText() ?? ""
+            call.resolve(["text": text])
+        }
+    }
+
+    /// The Scratchpad keeps a stroke as x, y, pressure triples; PencilKit wants timed points with a pen.
+    static func drawing(from strokes: [[Double]]) -> PKDrawing {
+        let ink = PKInk(.pen, color: .black)
+        var made: [PKStroke] = []
+        var start = Date()
+        for stroke in strokes {
+            var points: [PKStrokePoint] = []
+            var i = 0
+            while i + 2 < stroke.count {
+                let force = stroke[i + 2] > 0 ? stroke[i + 2] : 0.5
+                points.append(PKStrokePoint(
+                    location: CGPoint(x: stroke[i], y: stroke[i + 1]), timeOffset: Double(points.count) * 0.008,
+                    size: CGSize(width: 3, height: 3), opacity: 1, force: CGFloat(force), azimuth: 0, altitude: .pi / 2))
+                i += 3
+            }
+            guard !points.isEmpty else { continue }
+            made.append(PKStroke(ink: ink, path: PKStrokePath(controlPoints: points, creationDate: start)))
+            // Strokes follow one another in the order they were written.
+            start = start.addingTimeInterval(Double(points.count) * 0.008 + 0.25)
+        }
+        return PKDrawing(strokes: made)
+    }
+}

@@ -9,6 +9,8 @@ const STORAGE = 'scratch.v1';
 export interface Reading {
   /** What the recogniser made of it. */
   latex?: string;
+  /** A second opinion that differs, where two recognisers were asked. */
+  other?: string;
   /** Why it could not be read. */
   error?: string;
   pending?: boolean;
